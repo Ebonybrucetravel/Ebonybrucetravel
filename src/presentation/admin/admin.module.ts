@@ -7,9 +7,16 @@ import { BookingApplicationModule } from '@application/booking/booking-applicati
 import { AuthModule } from '@presentation/auth/auth.module';
 import { UserModule } from '@presentation/user/user.module';
 import { PermissionsGuard } from '@common/guards/permissions.guard';
-
+import { EmailModule } from '@infrastructure/email/email.module'; 
 @Module({
-  imports: [DatabaseModule, LoyaltyModule, BookingApplicationModule, AuthModule, UserModule],
+  imports: [
+    DatabaseModule,
+    LoyaltyModule,
+    BookingApplicationModule,
+    AuthModule,
+    UserModule,
+    EmailModule, 
+  ],
   controllers: [AdminController],
   providers: [RewardsAdminService, PermissionsGuard],
 })

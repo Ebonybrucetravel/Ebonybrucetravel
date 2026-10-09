@@ -1,4 +1,6 @@
 import { CreateBookingDto } from '../booking/dto/create-booking.dto';
+import { Logger } from '@nestjs/common';
+import { ResendService } from '@infrastructure/email/resend.service';
 import {
   Controller,
   Post,
@@ -77,12 +79,18 @@ function escapeCsv(s: any): string {
   return t;
 }
 
+function req_user_or_null(booking: any): string | null {
+  return booking?.userId ?? null;
+}
+
 @ApiTags('Admin')
 @ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN', 'SUPER_ADMIN')
 export class AdminController {
+  private readonly logger = new Logger(AdminController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly rewardsAdminService: RewardsAdminService,
@@ -99,6 +107,7 @@ export class AdminController {
     private readonly fetchHotelRatesUseCase: FetchHotelRatesUseCase,
     private readonly searchCarRentalsUseCase: SearchCarRentalsUseCase,
     private readonly createAmadeusHotelBookingUseCase: CreateAmadeusHotelBookingUseCase,
+    private readonly resendService: ResendService, 
   ) { }
 
   @Get('me')
@@ -1087,6 +1096,124 @@ async createBookingOnBehalf(@Body() dto: CreateBookingOnBehalfDto) {
       data: booking,
       message: 'Booking retrieved successfully',
     };
+  }
+
+  @Post('bookings/:bookingId/email')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Send booking email (confirmation, reminder, or cancellation)',
+    description:
+      'Re-sends the specified email to the booking customer using the Resend service templates.',
+  })
+  @ApiParam({ name: 'bookingId', description: 'Booking ID' })
+  @ApiBody({
+    schema: {
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['confirmation', 'reminder', 'cancellation'],
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Email sent successfully' })
+  @ApiResponse({ status: 404, description: 'Booking not found' })
+  async sendBookingEmail(
+    @Param('bookingId') bookingId: string,
+    @Body('type') type: 'confirmation' | 'reminder' | 'cancellation',
+  ) {
+    if (!['confirmation', 'reminder', 'cancellation'].includes(type)) {
+      throw new BadRequestException(
+        'Invalid email type. Must be one of: confirmation, reminder, cancellation',
+      );
+    }
+
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, deletedAt: null },
+      include: {
+        user: { select: { id: true, email: true, name: true, phone: true } },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const recipient = booking.user?.email;
+    if (!recipient) {
+      throw new BadRequestException('Booking has no associated email address');
+    }
+
+    const b = booking as any;
+    const bookingData = (booking.bookingData as any) || {};
+    const providerData = (booking.providerData as any) || {};
+
+    try {
+      if (type === 'cancellation') {
+        await this.resendService.sendCancellationEmail({
+          to: recipient,
+          customerName: booking.user?.name || 'Valued Customer',
+          bookingReference: booking.reference,
+          hasAirlineCredits: false,
+          refundAmount: b.refundAmount ? Number(b.refundAmount) : undefined,
+          refundCurrency: booking.currency,
+          cancellationDate: new Date(),
+        });
+      } else {
+        // confirmation + reminder use the confirmation template
+        await this.resendService.sendBookingConfirmationEmail({
+          to: recipient,
+          customerName: booking.user?.name || 'Valued Customer',
+          bookingReference: booking.reference,
+          productType: booking.productType,
+          provider: booking.provider,
+          bookingDetails: {},
+          pricing: {
+            basePrice: Number(booking.basePrice) || 0,
+            markupAmount: Number(booking.markupAmount) || 0,
+            serviceFee: Number(booking.serviceFee) || 0,
+            totalAmount: Number(booking.totalAmount) || 0,
+            currency: booking.currency || 'NGN',
+          },
+          confirmationDate: new Date(),
+          bookingData,
+          providerData,
+          passengerDetails: booking.user
+            ? {
+                name: booking.user.name,
+                email: booking.user.email,
+                phone: booking.user.phone || 'N/A',
+              }
+            : undefined,
+        } as any);
+      }
+
+      await this.prisma.auditLog.create({
+        data: {
+          userId: req_user_or_null(b),
+          action: 'ADMIN_SEND_BOOKING_EMAIL',
+          entityType: 'Booking',
+          entityId: bookingId,
+          changes: { emailType: type, sentTo: recipient },
+        },
+      });
+
+      this.logger.log(`✅ ${type} email sent to ${recipient} for booking ${booking.reference}`);
+
+      return {
+        success: true,
+        message: `${type} email sent to ${recipient}`,
+      };
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to send ${type} email for ${bookingId}:`,
+        error instanceof Error ? error.stack : error,
+      );
+      throw new BadRequestException(
+        `Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   @Get('audit-logs')

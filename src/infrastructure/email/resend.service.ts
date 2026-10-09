@@ -307,42 +307,111 @@ export class ResendService {
       this.logger.log(`📧 Sending ${data.productType} confirmation email for: ${data.bookingReference}`);
       this.logger.log(`📦 Provider: ${data.provider}, isWakanow: ${isWakanow}, isDuffel: ${isDuffel}`);
 
-      // ==================== CAR RENTAL EXTRACTION ====================
-      if (isCarRental && bookingData?.offerData) {
-        const offerData = bookingData.offerData;
-        const start = offerData?.start || {};
-        const end = offerData?.end || {};
-        const vehicle = offerData?.vehicle || {};
-        const serviceProvider = offerData?.serviceProvider || {};
-        const cancellationRules = offerData?.cancellationRules || [];
-
-        data.bookingDetails = {
-          ...data.bookingDetails,
-          pickupLocation: start?.locationCode || bookingData?.pickupLocation || 'N/A',
-          dropoffLocation: end?.locationCode || bookingData?.dropoffLocation || 'N/A',
-          pickupDateTime: start?.dateTime || bookingData?.pickupDateTime || 'N/A',
-          dropoffDateTime: end?.dateTime || bookingData?.dropoffDateTime || 'N/A',
-          vehicleType: vehicle?.description || offerData?.vehicleType || 'N/A',
-          carProvider: serviceProvider?.name || bookingData?.serviceProvider || 'N/A',
-          vehicleImage: vehicle?.imageURL || '',
-          seats: vehicle?.seats?.[0]?.count || offerData?.seats || 'N/A',
-          baggage: vehicle?.baggages?.[0]?.count || offerData?.baggage || 'N/A',
-          transferType: offerData?.transferType || bookingData?.transferType || 'PRIVATE',
-          duration: offerData?.duration || '',
-          cancellationRules: cancellationRules,
-          offerId: offerData?.offerId || bookingData?.offerId || 'N/A',
-          basePriceEUR: offerData?.basePriceEUR || 'N/A',
-          originalCurrency: offerData?.originalCurrency || 'EUR',
-          originalPrice: offerData?.original_price || 'N/A',
-        };
-
-        this.logger.log(`✅ Car rental data extracted:`, {
-          pickup: data.bookingDetails.pickupLocation,
-          dropoff: data.bookingDetails.dropoffLocation,
-          vehicle: data.bookingDetails.vehicleType,
-          provider: data.bookingDetails.carProvider,
-        });
-      }
+           // ==================== CAR RENTAL EXTRACTION ====================
+           if (isCarRental) {
+            const offerData = bookingData?.offerData || {};
+            const start = offerData?.start || {};
+            const end = offerData?.end || {};
+            const vehicle = offerData?.vehicle || {};
+            const serviceProvider = offerData?.serviceProvider || {};
+            const cancellationRules = offerData?.cancellationRules || [];
+    
+            // Build combined date/time from flat fields if needed
+            const flatPickup =
+              bookingData?.flight_date
+                ? `${bookingData.flight_date}T${bookingData.flight_time || '00:00'}:00`
+                : null;
+            const flatDropoff = flatPickup;
+    
+            // Pickup / Dropoff — support nested offerData OR flat snake_case
+            const pickupLocation =
+              start?.locationCode ||
+              bookingData?.pickup_location ||
+              bookingData?.pickupLocation ||
+              'N/A';
+    
+            const dropoffLocation =
+              end?.locationCode ||
+              bookingData?.dropoff_location ||
+              bookingData?.dropoffLocation ||
+              'N/A';
+    
+            const pickupDateTime =
+              start?.dateTime ||
+              bookingData?.pickupDateTime ||
+              flatPickup ||
+              'N/A';
+    
+            const dropoffDateTime =
+              end?.dateTime ||
+              bookingData?.dropoffDateTime ||
+              flatDropoff ||
+              'N/A';
+    
+            const vehicleType =
+              vehicle?.description ||
+              offerData?.vehicleType ||
+              bookingData?.vehicleType ||
+              bookingData?.transfer_type ||
+              'N/A';
+    
+            const carProvider =
+              serviceProvider?.name ||
+              bookingData?.serviceProvider ||
+              bookingData?.carProvider ||
+              (bookingData?.amadeus_offer_id ? 'Amadeus' : 'N/A');
+    
+            const transferType =
+              bookingData?.transfer_type ||
+              offerData?.transferType ||
+              'PRIVATE';
+    
+            const flightNumber =
+              bookingData?.flight_number ||
+              offerData?.flightNumber ||
+              null;
+    
+            const airlineCode =
+              bookingData?.airline_code ||
+              offerData?.airlineCode ||
+              null;
+    
+            data.bookingDetails = {
+              ...data.bookingDetails,
+              pickupLocation,
+              dropoffLocation,
+              pickupDateTime,
+              dropoffDateTime,
+              vehicleType,
+              carProvider,
+              vehicleImage: vehicle?.imageURL || '',
+              seats: vehicle?.seats?.[0]?.count || offerData?.seats || 'N/A',
+              baggage: vehicle?.baggages?.[0]?.count || offerData?.baggage || 'N/A',
+              transferType,
+              duration: offerData?.duration || '',
+              cancellationRules: cancellationRules,
+              offerId:
+                offerData?.offerId ||
+                bookingData?.amadeus_offer_id ||
+                bookingData?.offerId ||
+                'N/A',
+              basePriceEUR: offerData?.basePriceEUR || 'N/A',
+              originalCurrency: offerData?.originalCurrency || 'EUR',
+              originalPrice: offerData?.original_price || 'N/A',
+              // ✅ Extra fields for the email template
+              flightNumber,
+              airlineCode,
+            } as any;
+    
+            this.logger.log(`✅ Car rental data extracted:`, {
+              pickup: data.bookingDetails.pickupLocation,
+              dropoff: data.bookingDetails.dropoffLocation,
+              vehicle: data.bookingDetails.vehicleType,
+              provider: data.bookingDetails.carProvider,
+              transferType,
+              flightNumber,
+            });
+          }
 
       // ==================== DUFFEL EXTRACTION ====================
       if (isDuffel && bookingData?.offerData) {
@@ -1097,7 +1166,81 @@ export class ResendService {
       </div>
     ` : '';
 
-    const detailsSection = isHotel ? hotelDetailsSection : flightDetailsSection;
+       // ============ CAR RENTAL DETAILS SECTION ============
+       const isCarRentalEmail = data.productType === 'CAR_RENTAL';
+       const carDetailsSection = isCarRentalEmail ? `
+         <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #10b981;">
+           <h3 style="margin-top: 0; color: #2c3e50;">🚗 Car Rental / Transfer Details</h3>
+           <table style="width: 100%; border-collapse: collapse;">
+             ${data.bookingDetails?.pickupLocation ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold; width: 35%;">Pickup Location:</td>
+                 <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${data.bookingDetails.pickupLocation}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.pickupDateTime && data.bookingDetails.pickupDateTime !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Pickup Date & Time:</td>
+                 <td style="padding: 8px 0;">${new Date(data.bookingDetails.pickupDateTime).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' })}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.dropoffLocation ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Dropoff Location:</td>
+                 <td style="padding: 8px 0; color: #2c3e50; font-weight: 500;">${data.bookingDetails.dropoffLocation}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.dropoffDateTime && data.bookingDetails.dropoffDateTime !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Dropoff Date & Time:</td>
+                 <td style="padding: 8px 0;">${new Date(data.bookingDetails.dropoffDateTime).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' })}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.vehicleType && data.bookingDetails.vehicleType !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Vehicle / Transfer Type:</td>
+                 <td style="padding: 8px 0;">${data.bookingDetails.vehicleType}</td>
+               </tr>` : ''}
+             ${(data.bookingDetails as any)?.transferType ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Transfer Type:</td>
+                 <td style="padding: 8px 0;">${(data.bookingDetails as any).transferType}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.carProvider && data.bookingDetails.carProvider !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Provider:</td>
+                 <td style="padding: 8px 0;">${data.bookingDetails.carProvider}</td>
+               </tr>` : ''}
+             ${(data.bookingDetails as any)?.flightNumber ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Flight Number:</td>
+                 <td style="padding: 8px 0;">${(data.bookingDetails as any).flightNumber}</td>
+               </tr>` : ''}
+             ${(data.bookingDetails as any)?.airlineCode ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Airline Code:</td>
+                 <td style="padding: 8px 0;">${(data.bookingDetails as any).airlineCode}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.seats && data.bookingDetails.seats !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Seats:</td>
+                 <td style="padding: 8px 0;">${data.bookingDetails.seats}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.baggage && data.bookingDetails.baggage !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Baggage:</td>
+                 <td style="padding: 8px 0;">${data.bookingDetails.baggage}</td>
+               </tr>` : ''}
+             ${data.bookingDetails?.offerId && data.bookingDetails.offerId !== 'N/A' ? `
+               <tr>
+                 <td style="padding: 8px 0; font-weight: bold;">Offer ID:</td>
+                 <td style="padding: 8px 0; font-family: monospace;">${data.bookingDetails.offerId}</td>
+               </tr>` : ''}
+           </table>
+         </div>
+       ` : '';
+   
+       const detailsSection = isHotel
+         ? hotelDetailsSection
+         : isCarRentalEmail
+           ? carDetailsSection
+           : flightDetailsSection;
 
     const defaultNoShowWording = 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.';
     const noShowText = data.noShowWording || (data.productType === 'HOTEL' ? defaultNoShowWording : null);
