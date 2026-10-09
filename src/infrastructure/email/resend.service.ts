@@ -2,6 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
+const EMAIL_ICONS = {
+  plane:     'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f6eb.png',
+  hotel:     'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3e8.png',
+  car:       'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f697.png',
+  user:      'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f464.png',
+  money:     'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4b0.png',
+  clipboard: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4cb.png',
+  party:     'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f389.png',
+  check:     'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/2705.png',
+} as const;
+
+const emailIcon = (src: string, alt: string = '') =>
+  `<img src="${src}" width="24" height="24" style="vertical-align: middle; margin-right: 8px; border: 0; display: inline-block;" alt="${alt}" />`;
+
 export interface CancellationEmailData {
   to: string;
   customerName: string;
@@ -1103,7 +1117,7 @@ export class ResendService {
 
     const passengerSection = `
       <div style="background-color: #f0f7ff; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
-        <h3 style="margin-top: 0; color: #2c3e50;">👤 Passenger Details</h3>
+      <h3 style="margin-top: 0; color: #2c3e50;">${emailIcon(EMAIL_ICONS.user, 'Passenger')}Passenger Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
           <tr><td style="padding: 6px 0; font-weight: bold; width: 35%;">Lead Passenger:</td><td style="padding: 6px 0; width: 65%; color: #2c3e50; font-weight: 500;">${passengerName}</td></tr>
           <tr><td style="padding: 6px 0; font-weight: bold;">Email:</td><td style="padding: 6px 0;">${passengerEmail}</td></tr>
@@ -1117,7 +1131,7 @@ export class ResendService {
     const isFlight = data.bookingDetails?.origin && data.bookingDetails?.destination;
     const flightDetailsSection = isFlight ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
-        <h3 style="margin-top: 0; color: #2c3e50;">✈️ Flight Details</h3>
+      <h3 style="margin-top: 0; color: #2c3e50;">${emailIcon(EMAIL_ICONS.plane, 'Flight')}Flight Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
           ${airlineName ? `<tr><td style="padding: 8px 0; font-weight: bold; width: 35%;">Airline:</td><td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${airlineName}</td></tr>` : ''}
           ${flightNumber ? `<tr><td style="padding: 8px 0; font-weight: bold;">Flight Number:</td><td style="padding: 8px 0;">${flightNumber}</td></tr>` : ''}
@@ -1149,7 +1163,7 @@ export class ResendService {
     const isHotel = data.bookingDetails?.hotelName;
     const hotelDetailsSection = isHotel ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #e67e22;">
-        <h3 style="margin-top: 0; color: #2c3e50;">🏨 Hotel Details</h3>
+      <h3 style="margin-top: 0; color: #2c3e50;">${emailIcon(EMAIL_ICONS.hotel, 'Hotel')}Hotel Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
           <tr><td style="padding: 8px 0; font-weight: bold; width: 35%;">Hotel Name:</td><td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${hotelName}</td></tr>
           ${hotelRating ? `<tr><td style="padding: 8px 0; font-weight: bold;">Rating:</td><td style="padding: 8px 0;">${'⭐'.repeat(Math.round(hotelRating))} ${hotelRating}/5</td></tr>` : ''}
@@ -1170,7 +1184,7 @@ export class ResendService {
        const isCarRentalEmail = data.productType === 'CAR_RENTAL';
        const carDetailsSection = isCarRentalEmail ? `
          <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #10b981;">
-           <h3 style="margin-top: 0; color: #2c3e50;">🚗 Car Rental / Transfer Details</h3>
+         <h3 style="margin-top: 0; color: #2c3e50;">${emailIcon(EMAIL_ICONS.car, 'Car Transfer')}Car Transfer Details</h3>
            <table style="width: 100%; border-collapse: collapse;">
              ${data.bookingDetails?.pickupLocation ? `
                <tr>
@@ -1247,7 +1261,7 @@ export class ResendService {
     const hasHotelPolicy = data.productType === 'HOTEL' && (data.cancellationDeadline || data.cancellationPolicySummary || noShowText);
     const hotelPolicySection = hasHotelPolicy ? `
       <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0; border-radius: 5px;">
-        <h3 style="margin-top: 0; color: #856404;">📋 Cancellation & No-Show Policy</h3>
+      <h3 style="margin-top: 0; color: #856404;">${emailIcon(EMAIL_ICONS.clipboard, 'Policy')}Cancellation & No-Show Policy</h3>
         ${data.cancellationDeadline ? `<p style="margin: 5px 0;"><strong>Cancellation deadline (UTC):</strong> ${typeof data.cancellationDeadline === 'string' ? data.cancellationDeadline : new Date(data.cancellationDeadline).toISOString().replace('T', ' ').slice(0, 19)} UTC</p>` : ''}
         ${data.cancellationPolicySummary ? `<p style="margin: 5px 0; margin-top: 8px;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
         ${noShowText ? `<p style="margin: 10px 0 0 0;"><strong>No-show:</strong> ${noShowText}</p>` : ''}
@@ -1263,7 +1277,7 @@ export class ResendService {
             <h1 style="color: #2c3e50; margin: 0; font-size: 28px;">Ebony Bruce Travels</h1>
           </div>
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-top: 0;">Booking Confirmed! 🎉</h2>
+          <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-top: 0;">${emailIcon(EMAIL_ICONS.party, 'Confirmed')}Booking Confirmed!</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
             <p>We're excited to confirm that your ${productTypeLabel.toLowerCase()} booking has been successfully confirmed!</p>
             <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0; border-radius: 5px;">
@@ -1275,7 +1289,7 @@ export class ResendService {
             ${detailsSection}
             ${hotelPolicySection}
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-              <h3 style="margin-top: 0; color: #2c3e50;">💰 Pricing Summary</h3>
+            <h3 style="margin-top: 0; color: #2c3e50;">${emailIcon(EMAIL_ICONS.money, 'Pricing')}Pricing Summary</h3>
               <table style="width: 100%; border-collapse: collapse;">
                 <tr><td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Base Price:</td><td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.basePrice.toFixed(2)}</td></tr>
                 <tr><td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Service Fee:</td><td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.serviceFee.toFixed(2)}</td></tr>
