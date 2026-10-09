@@ -8,4 +8,3 @@ import { ResendService } from './resend.service';
   exports: [ResendService],
 })
 export class EmailModule {}
-

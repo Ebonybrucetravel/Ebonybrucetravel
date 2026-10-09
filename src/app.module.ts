@@ -18,6 +18,7 @@ import { CacheModule } from './infrastructure/cache/cache.module';
 import { HotelImagesModule } from './application/hotel-images/hotel-images.module';
 import { UsageTrackingModule } from './infrastructure/usage-tracking/usage-tracking.module';
 import { CurrencyModule } from './infrastructure/currency/currency.module';
+import { EmailModule } from './infrastructure/email/email.module'; // ✅ ADDED
 
 // Domains
 import { BookingModule } from './domains/booking/booking.module';
@@ -66,6 +67,7 @@ import { HotelImagesController } from './presentation/hotel-images/hotel-images.
     HotelImagesModule,
     UsageTrackingModule,
     CurrencyModule,
+    EmailModule, // ✅ ADDED
     BookingModule,
     PaymentModule,
     MarkupModule,

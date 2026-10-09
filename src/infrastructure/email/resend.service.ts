@@ -102,7 +102,6 @@ export interface BookingConfirmationEmailData {
     totalAmount?: number;
     currency?: string;
     isRefundable?: boolean;
-
     checkInDate?: string;
     checkOutDate?: string;
     hotelName?: string;
@@ -123,7 +122,6 @@ export interface BookingConfirmationEmailData {
     hotelAmenities?: string[];
     hotelImages?: string[];
     hotelOfferId?: string;
-
     pickupLocation?: string;
     dropoffLocation?: string;
     pickupDateTime?: string;
@@ -160,6 +158,7 @@ export interface BookingConfirmationEmailData {
   bookingData?: any;
   providerData?: any;
 }
+
 export interface PaymentReceiptEmailData {
   to: string;
   customerName: string;
@@ -229,14 +228,7 @@ export class ResendService {
     try {
       const subject = `Booking Cancellation Confirmation - ${data.bookingReference}`;
       const html = this.getCancellationEmailTemplate(data);
-
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Cancellation email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send cancellation email to ${data.to}:`, error);
@@ -247,14 +239,7 @@ export class ResendService {
     try {
       const subject = `Refund Processed - ${data.bookingReference}`;
       const html = this.getRefundEmailTemplate(data);
-
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Refund email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send refund email to ${data.to}:`, error);
@@ -267,14 +252,7 @@ export class ResendService {
         ? `Action Required: Flight Change - ${data.bookingReference}`
         : `Flight Update - ${data.bookingReference}`;
       const html = this.getAirlineChangeEmailTemplate(data);
-
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Airline change email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send airline change email to ${data.to}:`, error);
@@ -285,15 +263,7 @@ export class ResendService {
     try {
       const subject = 'Welcome to Ebony Bruce Travels!';
       const html = this.getRegistrationEmailTemplate(data);
-  
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-    
-      });
-  
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Registration email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send registration email to ${data.to}:`, error);
@@ -304,15 +274,7 @@ export class ResendService {
     try {
       const subject = 'Reset Your Password - Ebony Bruce Travels';
       const html = this.getPasswordResetEmailTemplate(data);
-  
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      
-      });
-  
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Password reset email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send password reset email to ${data.to}:`, error);
@@ -323,28 +285,19 @@ export class ResendService {
     try {
       const subject = 'New Sign-In Detected - Ebony Bruce Travels';
       const html = this.getLoginNotificationEmailTemplate(data);
-
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Login notification email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send login notification email to ${data.to}:`, error);
     }
   }
 
+  // ==================== FIXED: Booking Confirmation Email ====================
   async sendBookingConfirmationEmail(data: BookingConfirmationEmailData): Promise<void> {
     try {
-     
       const bookingData = data.bookingData || {};
       const providerData = data.providerData || {};
-      
-      
-      const offerData = bookingData?.offerData || {};
+
       const isCarRental = data.productType === 'CAR_RENTAL';
       const isHotel = data.productType === 'HOTEL';
       const isFlight = data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC';
@@ -353,23 +306,16 @@ export class ResendService {
 
       this.logger.log(`📧 Sending ${data.productType} confirmation email for: ${data.bookingReference}`);
       this.logger.log(`📦 Provider: ${data.provider}, isWakanow: ${isWakanow}, isDuffel: ${isDuffel}`);
-      
-  
-      if (isCarRental && offerData) {
+
+      // ==================== CAR RENTAL EXTRACTION ====================
+      if (isCarRental && bookingData?.offerData) {
+        const offerData = bookingData.offerData;
         const start = offerData?.start || {};
         const end = offerData?.end || {};
         const vehicle = offerData?.vehicle || {};
         const serviceProvider = offerData?.serviceProvider || {};
         const cancellationRules = offerData?.cancellationRules || [];
-        
-        this.logger.log(`🚗 Car rental data:`, {
-          pickupLocation: start?.locationCode || bookingData?.pickupLocation,
-          dropoffLocation: end?.locationCode || bookingData?.dropoffLocation,
-          vehicleType: vehicle?.description || offerData?.vehicleType,
-          provider: serviceProvider?.name || bookingData?.serviceProvider,
-        });
-        
-       
+
         data.bookingDetails = {
           ...data.bookingDetails,
           pickupLocation: start?.locationCode || bookingData?.pickupLocation || 'N/A',
@@ -389,7 +335,7 @@ export class ResendService {
           originalCurrency: offerData?.originalCurrency || 'EUR',
           originalPrice: offerData?.original_price || 'N/A',
         };
-        
+
         this.logger.log(`✅ Car rental data extracted:`, {
           pickup: data.bookingDetails.pickupLocation,
           dropoff: data.bookingDetails.dropoffLocation,
@@ -397,43 +343,41 @@ export class ResendService {
           provider: data.bookingDetails.carProvider,
         });
       }
-      
-      
+
+      // ==================== DUFFEL EXTRACTION ====================
       if (isDuffel && bookingData?.offerData) {
         const offerData = bookingData.offerData;
         const slices = offerData?.slices || [];
         const outboundSlice = slices[0] || {};
         const returnSlice = slices[1] || null;
-        
+
         const outboundSegments = outboundSlice.segments || [];
         const firstOutboundSegment = outboundSegments[0] || {};
         const lastOutboundSegment = outboundSegments[outboundSegments.length - 1] || firstOutboundSegment;
-        
+
         const returnSegments = returnSlice?.segments || [];
         const firstReturnSegment = returnSegments[0] || {};
         const lastReturnSegment = returnSegments[returnSegments.length - 1] || firstReturnSegment;
-        
+
         const isRoundTrip = slices.length > 1;
         const operatingCarrier = firstOutboundSegment.operating_carrier || firstOutboundSegment.marketing_carrier || {};
         const airlineName = operatingCarrier.name || 'Airline';
         const airlineCode = operatingCarrier.iata_code || '';
         const airlineLogo = operatingCarrier.logo_symbol_url || '';
-        const flightNumber = firstOutboundSegment.marketing_carrier_flight_number || 
-                            firstOutboundSegment.flight_number || 
-                            'N/A';
-        
+        const flightNumber = firstOutboundSegment.marketing_carrier_flight_number || firstOutboundSegment.flight_number || 'N/A';
+
         const outboundDeparture = firstOutboundSegment.origin?.iata_code || firstOutboundSegment.origin?.iataCode || 'N/A';
         const outboundArrival = lastOutboundSegment.destination?.iata_code || lastOutboundSegment.destination?.iataCode || 'N/A';
         const outboundDepartureTime = firstOutboundSegment.departing_at || firstOutboundSegment.departure?.at || '';
         const outboundArrivalTime = lastOutboundSegment.arriving_at || lastOutboundSegment.arrival?.at || '';
-        
+
         const returnDeparture = firstReturnSegment.origin?.iata_code || firstReturnSegment.origin?.iataCode || 'N/A';
         const returnArrival = lastReturnSegment.destination?.iata_code || lastReturnSegment.destination?.iataCode || 'N/A';
         const returnDepartureTime = firstReturnSegment.departing_at || firstReturnSegment.departure?.at || '';
         const returnArrivalTime = lastReturnSegment.arriving_at || lastReturnSegment.arrival?.at || '';
-        
+
         const passengerCount = offerData?.passengers?.length || 1;
-        
+
         let luggageInfo = '';
         if (firstOutboundSegment.passengers?.length > 0) {
           const baggages = firstOutboundSegment.passengers[0].baggages || [];
@@ -442,25 +386,15 @@ export class ResendService {
             luggageInfo = `${checkedBags.reduce((sum: number, b: any) => sum + (b.quantity || 0), 0)} checked bag(s)`;
           }
         }
-        
+
         let cabinClass = 'Economy';
         if (firstOutboundSegment.passengers?.length > 0) {
-          cabinClass = firstOutboundSegment.passengers[0].cabin_class_marketing_name || 
-                       firstOutboundSegment.passengers[0].cabin_class || 
-                       'Economy';
+          cabinClass = firstOutboundSegment.passengers[0].cabin_class_marketing_name || firstOutboundSegment.passengers[0].cabin_class || 'Economy';
         }
-        
+
         const outboundStops = Math.max(0, outboundSegments.length - 1);
         const returnStops = returnSegments.length > 0 ? Math.max(0, returnSegments.length - 1) : 0;
-        
-        this.logger.log(`✈️ Duffel flight data:`, {
-          airline: airlineName,
-          flightNumber,
-          outbound: `${outboundDeparture} → ${outboundArrival}`,
-          isRoundTrip,
-          passengerCount,
-        });
-        
+
         data.bookingDetails = {
           ...data.bookingDetails,
           origin: outboundDeparture,
@@ -489,61 +423,130 @@ export class ResendService {
           currency: offerData?.total_currency || data.pricing?.currency || 'GBP',
           isRefundable: offerData?.conditions?.refund_before_departure?.allowed || false,
         };
-        
-        this.logger.log(`✅ Duffel flight data extracted:`, {
-          airline: data.bookingDetails.airlineName,
-          flight: data.bookingDetails.flightNumber,
-          route: `${data.bookingDetails.origin} → ${data.bookingDetails.destination}`,
-          isRoundTrip: data.bookingDetails.isRoundTrip,
-        });
       }
-      
-   
-      if (isWakanow && providerData) {
-        const flightSummary = providerData?.FlightBookingSummary || 
-                             providerData?.FlightBookingResult?.FlightBookingSummaryModel || 
-                             {};
-        const flightCombination = flightSummary?.FlightSummaryModel?.FlightCombination || 
-                                 flightSummary?.FlightCombination || 
-                                 {};
-        const flightModels = flightCombination?.FlightModels || [];
-        const outboundFlight = flightModels[0] || {};
-        const firstLeg = outboundFlight?.FlightLegs?.[0] || {};
-        const lastLeg = outboundFlight?.FlightLegs?.[outboundFlight?.FlightLegs?.length - 1] || firstLeg;
-        
-        const airlineName = outboundFlight.AirlineName || firstLeg.AirlineName || 'N/A';
-        const airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
-        const airlineLogo = airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '';
-        const flightNumber = outboundFlight.Name || outboundFlight.FlightNumber || firstLeg.FlightNumber || 'N/A';
-        const departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || 'N/A';
-        const arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || 'N/A';
-        const departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || '';
-        const arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || '';
-        const stops = outboundFlight.Stops || 0;
-        const cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
-        const bookingClass = firstLeg.BookingClass || outboundFlight.BookingClass || 'Economy';
-        const pnrNumber = flightSummary.PnrReferenceNumber || bookingData?.pnrReferenceNumber || 'N/A';
-        const ticketStatus = flightSummary.TicketStatus || 'Pending';
-        const isMultiCity = bookingData?.isMultiCity || false;
-        const allSegments = bookingData?.allSegments || [];
-        
-        
-        const price = flightCombination.Price || {};
-        const totalAmount = price.Amount || bookingData?.totalAmount || data.pricing?.totalAmount || 0;
-        const currency = price.CurrencyCode || bookingData?.currency || data.pricing?.currency || 'NGN';
-  
-        const stopInfo = bookingData?.stopInformation || null;
-        const stopsList = stopInfo?.stopsList || [];
-        
-        this.logger.log(`✈️ Wakanow flight data:`, {
-          airline: airlineName,
-          flightNumber,
-          route: `${departureAirport} → ${arrivalAirport}`,
-          pnr: pnrNumber,
-          isMultiCity,
-          segments: allSegments.length,
-        });
-        
+
+      // ==================== WAKANOW EXTRACTION (FIXED) ====================
+      if (isWakanow) {
+        // Resolve actual provider data (handle nesting)
+        const actualProviderData = providerData || bookingData?.providerData || bookingData?.bookingData?.providerData || {};
+        const actualBookingData = bookingData || {};
+
+        let airlineName = 'N/A';
+        let flightNumber = 'N/A';
+        let departureAirport = 'N/A';
+        let arrivalAirport = 'N/A';
+        let departureTime = '';
+        let arrivalTime = '';
+        let stops = 0;
+        let cabinClass = 'Economy';
+        let bookingClass = 'Economy';
+        let ticketStatus = 'Pending';
+        let totalAmount = data.pricing?.totalAmount || 0;
+        let currency = data.pricing?.currency || 'NGN';
+        let airlineCode = '';
+        let departureDate = '';
+        let arrivalDate = '';
+        let paymentStatus = 'PENDING';
+        let pnrNumber = 'N/A';
+
+        // Try to extract from Provider Data (Wakanow API Response)
+        if (actualProviderData) {
+          let flightSummary: any = null;
+          let flightModels: any[] = [];
+
+          if (actualProviderData.FlightBookingSummary) {
+            flightSummary = actualProviderData.FlightBookingSummary;
+          } else if (actualProviderData.FlightBookingResult?.FlightBookingSummaryModel) {
+            flightSummary = actualProviderData.FlightBookingResult.FlightBookingSummaryModel;
+          } else if (actualProviderData.FlightSummaryModel) {
+            flightSummary = actualProviderData;
+          }
+
+          if (flightSummary) {
+            const summaryModel = flightSummary.FlightSummaryModel || flightSummary;
+            const flightCombination = summaryModel.FlightCombination || flightSummary.FlightCombination || {};
+            flightModels = flightCombination.FlightModels || summaryModel.FlightModels || [];
+
+            const outboundFlight = flightModels[0] || {};
+            const flightLegs = outboundFlight?.FlightLegs || [];
+            const firstLeg = flightLegs[0] || {};
+            const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
+
+            airlineName = outboundFlight.AirlineName || outboundFlight.Airline || firstLeg.AirlineName || firstLeg.Airline || 'N/A';
+            airlineCode = outboundFlight.Airline || firstLeg.AirlineCode || '';
+            flightNumber = outboundFlight.Name || outboundFlight.FlightNumber || firstLeg.FlightNumber || firstLeg.Name || 'N/A';
+            departureAirport = outboundFlight.DepartureCode || firstLeg.DepartureCode || outboundFlight.Origin || 'N/A';
+            arrivalAirport = outboundFlight.ArrivalCode || lastLeg.DestinationCode || outboundFlight.Destination || 'N/A';
+            departureTime = outboundFlight.DepartureTime || firstLeg.StartTime || outboundFlight.DepartureDateTime || '';
+            arrivalTime = outboundFlight.ArrivalTime || lastLeg.EndTime || outboundFlight.ArrivalDateTime || '';
+            departureDate = departureTime ? new Date(departureTime).toISOString().split('T')[0] : '';
+            arrivalDate = arrivalTime ? new Date(arrivalTime).toISOString().split('T')[0] : '';
+            stops = outboundFlight.Stops || outboundFlight.StopCount || 0;
+            cabinClass = firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy';
+            bookingClass = firstLeg.BookingClass || outboundFlight.BookingClass || 'Economy';
+            ticketStatus = flightSummary.TicketStatus || summaryModel.TicketStatus || 'Pending';
+
+            const price = flightCombination.Price || summaryModel.Price || {};
+            totalAmount = price.Amount || outboundFlight.Price || data.pricing?.totalAmount || 0;
+            currency = price.CurrencyCode || data.pricing?.currency || 'NGN';
+            paymentStatus = flightSummary.PaymentStatus || 'PENDING';
+          }
+        }
+
+        // Fallback to Booking Data if provider data failed
+        if (airlineName === 'N/A' && actualBookingData) {
+          airlineName = actualBookingData.airlineName || actualBookingData.airline || 'N/A';
+          flightNumber = actualBookingData.flightNumber || actualBookingData.flight_number || 'N/A';
+          departureAirport = actualBookingData.origin || actualBookingData.departureAirport || 'N/A';
+          arrivalAirport = actualBookingData.destination || actualBookingData.arrivalAirport || 'N/A';
+          departureTime = actualBookingData.departureTime || actualBookingData.departureDate || '';
+          arrivalTime = actualBookingData.arrivalTime || actualBookingData.arrivalDate || '';
+          departureDate = actualBookingData.departureDate || '';
+          arrivalDate = actualBookingData.arrivalDate || '';
+          stops = actualBookingData.stops || 0;
+          cabinClass = actualBookingData.cabinClass || actualBookingData.cabin || 'Economy';
+          bookingClass = actualBookingData.bookingClass || actualBookingData.class || 'Economy';
+          ticketStatus = actualBookingData.ticketStatus || 'Pending';
+          totalAmount = actualBookingData.totalAmount || data.pricing?.totalAmount || 0;
+          currency = actualBookingData.currency || data.pricing?.currency || 'NGN';
+          airlineCode = actualBookingData.airlineCode || '';
+          paymentStatus = actualBookingData.paymentStatus || 'PENDING';
+        }
+
+        // Extract PNR Number
+        pnrNumber =
+          actualBookingData?.pnrReferenceNumber ||
+          actualBookingData?.PnrReferenceNumber ||
+          actualBookingData?.pnrNumber ||
+          actualBookingData?.PnrNumber ||
+          actualBookingData?.PNR ||
+          actualProviderData?.PnrReferenceNumber ||
+          actualProviderData?.PNR ||
+          actualProviderData?.PnrNumber ||
+          data.bookingDetails?.pnrNumber ||
+          'N/A';
+
+        // Handle Multi-city
+        let isMultiCity = actualBookingData?.isMultiCity || false;
+        let allSegments = actualBookingData?.allSegments || [];
+        if (!isMultiCity && actualProviderData) {
+          isMultiCity = actualProviderData?.IsMultiCity || actualProviderData?.isMultiCity || false;
+          allSegments = actualProviderData?.AllSegments || actualProviderData?.allSegments || [];
+        }
+        if (!isMultiCity && actualProviderData?.FlightBookingSummary?.FlightSummaryModel?.FlightModels) {
+          const flightModelsCheck = actualProviderData.FlightBookingSummary.FlightSummaryModel.FlightModels || [];
+          if (flightModelsCheck.length > 1) {
+            isMultiCity = true;
+            allSegments = flightModelsCheck.map((flight: any) => ({
+              from: flight.DepartureCode || flight.Origin || '',
+              to: flight.ArrivalCode || flight.Destination || '',
+              date: flight.DepartureTime || flight.DepartureDateTime || '',
+              airline: flight.AirlineName || flight.Airline || '',
+              flightNumber: flight.FlightNumber || flight.Name || '',
+            }));
+          }
+        }
+
         data.bookingDetails = {
           ...data.bookingDetails,
           origin: departureAirport,
@@ -552,7 +555,7 @@ export class ResendService {
           arrivalDate: arrivalTime,
           airlineName: airlineName,
           airlineCode: airlineCode,
-          airlineLogo: airlineLogo,
+          airlineLogo: airlineCode ? `https://images.wakanow.com/Images/flight-logos/${airlineCode}.gif` : '',
           flightNumber: flightNumber,
           cabinClass: cabinClass,
           bookingClass: bookingClass,
@@ -561,12 +564,11 @@ export class ResendService {
           ticketStatus: ticketStatus,
           isMultiCity: isMultiCity,
           allSegments: allSegments,
-          stopsList: stopsList,
-          wakanowBookingId: bookingData?.wakanowBookingId || providerData?.BookingId || 'N/A',
+          wakanowBookingId: actualBookingData?.wakanowBookingId || actualProviderData?.BookingId || 'N/A',
           totalAmount: totalAmount,
           currency: currency,
         };
-        
+
         this.logger.log(`✅ Wakanow flight data extracted:`, {
           airline: data.bookingDetails.airlineName,
           flight: data.bookingDetails.flightNumber,
@@ -575,16 +577,9 @@ export class ResendService {
           isMultiCity: data.bookingDetails.isMultiCity,
         });
       }
-      
 
+      // ==================== HOTEL EXTRACTION ====================
       if (isHotel && bookingData) {
-        this.logger.log(`🏨 Hotel data:`, {
-          hotelName: data.bookingDetails?.hotelName || bookingData?.hotelName || 'NOT PROVIDED',
-          checkIn: data.bookingDetails?.checkInDate || bookingData?.checkInDate,
-          checkOut: data.bookingDetails?.checkOutDate || bookingData?.checkOutDate,
-        });
-        
-   
         data.bookingDetails = {
           ...data.bookingDetails,
           hotelName: data.bookingDetails?.hotelName || bookingData?.hotelName || 'Hotel',
@@ -599,50 +594,36 @@ export class ResendService {
           hotelOfferId: bookingData?.offerId || bookingData?.hotelOfferId || 'N/A',
         };
       }
-      
- 
+
       this.logger.log(`📧 Email data summary for ${data.bookingReference}:`, {
         productType: data.productType,
         provider: data.provider,
         customerName: data.customerName,
-        passengerEmail: data.passengerDetails?.email || data.to,
-        totalAmount: data.pricing?.totalAmount,
-        currency: data.pricing?.currency,
         bookingDetails: {
           origin: data.bookingDetails?.origin,
           destination: data.bookingDetails?.destination,
           airline: data.bookingDetails?.airlineName,
           hotel: data.bookingDetails?.hotelName,
           carProvider: data.bookingDetails?.carProvider,
-          pickup: data.bookingDetails?.pickupLocation,
-          dropoff: data.bookingDetails?.dropoffLocation,
         },
       });
-      
-   
+
       const subject = `Booking Confirmed - ${data.bookingReference}`;
       const html = this.getBookingConfirmationEmailTemplate(data);
-      
+
       const result = await this.resend.emails.send({
         from: this.fromEmail,
         to: data.to,
         subject,
         html,
       });
-      
+
       this.logger.log(`✅ Booking confirmation email sent to ${data.to} for booking ${data.bookingReference}`);
       if (result?.error) {
         this.logger.error(`❌ Resend API error: ${result.error.message}`);
-      } else if (result?.data) {
-    
-        this.logger.log(`📧 Email ID: ${result.data.id || 'N/A'}`);
-      } else {
-        this.logger.log('📧 Email sent successfully (no ID returned)');
       }
-      
     } catch (error) {
       this.logger.error(`❌ Failed to send booking confirmation email to ${data.to}:`, error);
-     
     }
   }
 
@@ -650,14 +631,7 @@ export class ResendService {
     try {
       const subject = `Payment Receipt - ${data.bookingReference}`;
       const html = this.getPaymentReceiptEmailTemplate(data);
-
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Payment receipt email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send payment receipt email to ${data.to}:`, error);
@@ -668,12 +642,7 @@ export class ResendService {
     try {
       const subject = 'We received your message - Ebony Bruce Travels';
       const html = this.getContactConfirmationEmailTemplate(data);
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Contact confirmation email sent to ${data.to}`);
     } catch (error) {
       this.logger.error(`Failed to send contact confirmation to ${data.to}:`, error);
@@ -684,14 +653,7 @@ export class ResendService {
     try {
       const subject = `Action Required: Issue with Booking ${data.bookingReference}`;
       const html = this.getBookingFailureEmailTemplate(data);
-
-      await this.resend.emails.send({
-        from: this.fromEmail,
-        to: data.to,
-        subject,
-        html,
-      });
-
+      await this.resend.emails.send({ from: this.fromEmail, to: data.to, subject, html });
       this.logger.log(`Booking failure email sent to ${data.to} for booking ${data.bookingReference}`);
     } catch (error) {
       this.logger.error(`Failed to send booking failure email to ${data.to}:`, error);
@@ -704,12 +666,7 @@ export class ResendService {
       const subject = `[Contact Us] New submission: ${data.serviceInterestedIn} - ${data.submitterName}`;
       const html = this.getContactSubmissionNotificationTemplate(data);
       for (const to of data.to) {
-        await this.resend.emails.send({
-          from: this.fromEmail,
-          to: to.trim(),
-          subject,
-          html,
-        });
+        await this.resend.emails.send({ from: this.fromEmail, to: to.trim(), subject, html });
       }
       this.logger.log(`Contact submission notification sent to ${data.to.length} admin(s)`);
     } catch (error) {
@@ -721,53 +678,34 @@ export class ResendService {
 
   private getBookingFailureEmailTemplate(data: BookingFailureEmailData): string {
     const productTypeLabel =
-      data.productType === 'HOTEL'
-        ? 'Hotel'
-        : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC'
-          ? 'Flight'
-          : data.productType === 'CAR_RENTAL'
-            ? 'Car Rental'
-            : 'Booking';
+      data.productType === 'HOTEL' ? 'Hotel'
+      : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight'
+      : data.productType === 'CAR_RENTAL' ? 'Car Rental'
+      : 'Booking';
 
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Issue with your Booking</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Issue with your Booking</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
-              Important Update Regarding Your Booking
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">Important Update Regarding Your Booking</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>We successfully received your payment of <strong>${data.currency.toUpperCase()} ${(data.amount / 100).toFixed(2)}</strong> for booking reference <strong>${data.bookingReference}</strong>.</p>
-            
             <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #856404;">Action Required</h3>
               <p>Unfortunately, we encountered an unexpected issue while securing your ${productTypeLabel.toLowerCase()} reservation with the provider.</p>
               <p><strong>Your payment is safe.</strong> Our support team has been automatically notified and is currently looking into this issue.</p>
             </div>
-            
             <p>We will either manually secure this booking for you, or issue a full and immediate refund back to your original payment method. We will contact you shortly with an update.</p>
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
               <p>We sincerely apologize for the inconvenience. If you have any immediate questions, please reply directly to this email.</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Support Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Support Team</strong></p>
             </div>
           </div>
-          
           <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
             <p>This is an automated priority notification.</p>
           </div>
@@ -780,11 +718,7 @@ export class ResendService {
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>We received your message</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>We received your message</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
@@ -800,7 +734,7 @@ export class ResendService {
             </div>
           </div>
           <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated confirmation. Please do not reply to this message if you only wanted to confirm receipt.</p>
+            <p>This is an automated confirmation.</p>
           </div>
         </body>
       </html>
@@ -808,21 +742,12 @@ export class ResendService {
   }
 
   private getContactSubmissionNotificationTemplate(data: ContactSubmissionNotificationData): string {
-    const phoneLine = data.submitterPhone
-      ? `<p style="margin: 5px 0;"><strong>Phone:</strong> ${data.submitterPhone}</p>`
-      : '';
-    const submittedAtStr = data.submittedAt.toLocaleString('en-GB', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+    const phoneLine = data.submitterPhone ? `<p style="margin: 5px 0;"><strong>Phone:</strong> ${data.submitterPhone}</p>` : '';
+    const submittedAtStr = data.submittedAt.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>New Contact Us submission</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>New Contact Us submission</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #fff3cd; padding: 15px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #856404; margin: 0;">New Contact Us submission</h1>
@@ -842,7 +767,6 @@ export class ResendService {
               <h3 style="margin-top: 0;">Message</h3>
               <p style="white-space: pre-wrap; margin: 0;">${(data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
             </div>
-            <p style="font-size: 12px; color: #666;">View and manage submissions in the admin panel under Contact submissions.</p>
           </div>
         </body>
       </html>
@@ -851,85 +775,42 @@ export class ResendService {
 
   private getCancellationEmailTemplate(data: CancellationEmailData): string {
     const refundSection = data.hasAirlineCredits
-      ? `
-        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+      ? `<div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
           <h3 style="margin-top: 0; color: #856404;">Airline Credits Issued</h3>
           <p>Instead of a cash refund, the airline has issued travel credits (vouchers) for your booking.</p>
-          <p><strong>Important:</strong> You can use these credits directly with the airline for future bookings.</p>
           ${data.airlineCredits && data.airlineCredits.length > 0
-        ? `
-            <ul>
-              ${data.airlineCredits
-          .map(
-            (credit) => `
-                <li>
-                  <strong>Credit Code:</strong> ${credit.code || 'N/A'}<br>
-                  <strong>Amount:</strong> ${credit.amount} ${credit.amount_currency}<br>
-                  <strong>Airline:</strong> ${credit.airline_iata_code || 'N/A'}
-                </li>
-              `,
-          )
-          .join('')}
-            </ul>
-          `
-        : ''}
-        </div>
-      `
+            ? `<ul>${data.airlineCredits.map((credit) => `<li><strong>Credit Code:</strong> ${credit.code || 'N/A'}<br><strong>Amount:</strong> ${credit.amount} ${credit.amount_currency}<br><strong>Airline:</strong> ${credit.airline_iata_code || 'N/A'}</li>`).join('')}</ul>`
+            : ''}
+        </div>`
       : data.refundAmount
-        ? `
-        <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
-          <h3 style="margin-top: 0; color: #0c5460;">Refund Information</h3>
-          <p><strong>Refund Amount:</strong> ${data.refundAmount} ${data.refundCurrency || ''}</p>
-          <p>Your refund will be processed to your original payment method. Please allow 5-10 business days for the refund to appear in your account.</p>
-        </div>
-      `
-        : `
-        <div style="background-color: #f8d7da; border-left: 4px solid #721c24; padding: 15px; margin: 20px 0;">
-          <p><strong>Note:</strong> This booking was non-refundable. No refund will be issued.</p>
-        </div>
-      `;
+        ? `<div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #0c5460;">Refund Information</h3>
+            <p><strong>Refund Amount:</strong> ${data.refundAmount} ${data.refundCurrency || ''}</p>
+            <p>Your refund will be processed to your original payment method. Please allow 5-10 business days.</p>
+          </div>`
+        : `<div style="background-color: #f8d7da; border-left: 4px solid #721c24; padding: 15px; margin: 20px 0;"><p><strong>Note:</strong> This booking was non-refundable. No refund will be issued.</p></div>`;
 
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Booking Cancellation Confirmation</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Booking Cancellation Confirmation</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-              Booking Cancellation Confirmation
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">Booking Cancellation Confirmation</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>We're writing to confirm that your booking has been cancelled.</p>
-            
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <p style="margin: 5px 0;"><strong>Booking Reference:</strong> ${data.bookingReference}</p>
               <p style="margin: 5px 0;"><strong>Cancellation Date:</strong> ${data.cancellationDate.toLocaleDateString()}</p>
             </div>
-            
             ${refundSection}
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
               <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-              <p>Thank you for choosing Ebony Bruce Travels.</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated email. Please do not reply to this message.</p>
           </div>
         </body>
       </html>
@@ -940,46 +821,25 @@ export class ResendService {
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Refund Processed</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Refund Processed</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px;">
-              Refund Processed
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px;">Refund Processed</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>We're pleased to inform you that your refund has been processed.</p>
-            
             <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #155724;">Refund Details</h3>
               <p style="margin: 5px 0;"><strong>Booking Reference:</strong> ${data.bookingReference}</p>
               <p style="margin: 5px 0;"><strong>Refund Amount:</strong> ${data.refundAmount} ${data.refundCurrency}</p>
               <p style="margin: 5px 0;"><strong>Refund Date:</strong> ${data.refundDate.toLocaleDateString()}</p>
             </div>
-            
-            <p>The refund has been processed to your original payment method. Please allow 5-10 business days for the funds to appear in your account.</p>
-            
+            <p>Please allow 5-10 business days for the funds to appear in your account.</p>
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-              <p>Thank you for choosing Ebony Bruce Travels.</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated email. Please do not reply to this message.</p>
           </div>
         </body>
       </html>
@@ -988,61 +848,35 @@ export class ResendService {
 
   private getAirlineChangeEmailTemplate(data: AirlineChangeEmailData): string {
     const actionSection = data.actionRequired
-      ? `
-        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+      ? `<div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
           <h3 style="margin-top: 0; color: #856404;">Action Required</h3>
           <p>Please review the changes to your flight and take necessary action through your booking dashboard.</p>
-        </div>
-      `
+        </div>`
       : '';
 
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Flight Update</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Flight Update</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
-              Flight Update
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">Flight Update</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>The airline has made changes to your flight booking.</p>
-            
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <p style="margin: 5px 0;"><strong>Booking Reference:</strong> ${data.bookingReference}</p>
             </div>
-            
             ${actionSection}
-            
             <div style="background-color: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0;">Change Details</h3>
               <pre style="white-space: pre-wrap; font-family: Arial, sans-serif;">${JSON.stringify(data.changeDetails, null, 2)}</pre>
             </div>
-            
-            <p>Please log in to your account to view the full details of the changes and take any necessary action.</p>
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any questions or concerns, please don't hesitate to contact our support team.</p>
-              <p>Thank you for choosing Ebony Bruce Travels.</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated email. Please do not reply to this message.</p>
           </div>
         </body>
       </html>
@@ -1053,30 +887,19 @@ export class ResendService {
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Welcome to Ebony Bruce Travels</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Welcome to Ebony Bruce Travels</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-              Welcome to Ebony Bruce Travels!
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">Welcome to Ebony Bruce Travels!</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>Thank you for creating an account with Ebony Bruce Travels! We're excited to have you on board.</p>
-            
             <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #155724;">Your Account Details</h3>
               <p style="margin: 5px 0;"><strong>Email:</strong> ${data.email}</p>
             </div>
-            
             <p>You can now:</p>
             <ul>
               <li>Search and book flights, hotels, and car rentals</li>
@@ -1084,33 +907,18 @@ export class ResendService {
               <li>Receive exclusive travel deals and promotions</li>
               <li>Track your booking status in real-time</li>
             </ul>
-            
             ${data.verificationUrl ? `
             <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #0c5460;">Verify Your Email</h3>
-              <p>Please verify your email address to complete your registration and unlock all features.</p>
+              <p>Please verify your email address to complete your registration.</p>
               <div style="text-align: center; margin: 20px 0;">
-                <a href="${data.verificationUrl}" 
-                   style="display: inline-block; background-color: #0c5460; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                  Verify Email Address
-                </a>
+                <a href="${data.verificationUrl}" style="display: inline-block; background-color: #0c5460; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email Address</a>
               </div>
               <p style="font-size: 12px; color: #666;">Or copy and paste this link into your browser: ${data.verificationUrl}</p>
-            </div>
-            ` : ''}
-            
+            </div>` : ''}
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-              <p>Thank you for choosing Ebony Bruce Travels. We look forward to helping you plan your next adventure!</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated email. Please do not reply to this message.</p>
           </div>
         </body>
       </html>
@@ -1119,79 +927,38 @@ export class ResendService {
 
   private getLoginNotificationEmailTemplate(data: LoginNotificationEmailData): string {
     const loginTime = data.loginTime.toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZoneName: 'short',
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
     });
 
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>New Sign-In Detected</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>New Sign-In Detected</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
-              New Sign-In Detected
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">New Sign-In Detected</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>We detected a new sign-in to your Ebony Bruce Travels account.</p>
-            
             <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #856404;">Sign-In Details</h3>
               <p style="margin: 5px 0;"><strong>Time:</strong> ${loginTime}</p>
               ${data.ipAddress ? `<p style="margin: 5px 0;"><strong>IP Address:</strong> ${data.ipAddress}</p>` : ''}
               ${data.userAgent ? `<p style="margin: 5px 0;"><strong>Device:</strong> ${data.userAgent}</p>` : ''}
             </div>
-            
             <div style="background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #721c24;">Was this you?</h3>
-              <p>If you recognize this sign-in, no action is needed. Your account is secure.</p>
-              <p><strong>If you did NOT initiate this sign-in, please change your password immediately to secure your account.</strong></p>
+              <p>If you recognize this sign-in, no action is needed.</p>
+              <p><strong>If you did NOT initiate this sign-in, please change your password immediately.</strong></p>
             </div>
-            
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.changePasswordUrl}" 
-                 style="display: inline-block; background-color: #dc3545; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                Change Password
-              </a>
+              <a href="${data.changePasswordUrl}" style="display: inline-block; background-color: #dc3545; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Change Password</a>
             </div>
-            
-            <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #0c5460;">Security Tips</h3>
-              <ul style="margin: 10px 0; padding-left: 20px;">
-                <li>Use a strong, unique password</li>
-                <li>Never share your password with anyone</li>
-                <li>Enable two-factor authentication if available</li>
-                <li>Log out from shared or public devices</li>
-              </ul>
-            </div>
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any concerns about your account security, please contact our support team immediately.</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Security Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Security Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated security notification. Please do not reply to this message.</p>
-            <p>If you did not sign in to your account, please change your password immediately.</p>
           </div>
         </body>
       </html>
@@ -1202,72 +969,38 @@ export class ResendService {
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Reset Your Password</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Reset Your Password</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">
-              Reset Your Password
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">Reset Your Password</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>We received a request to reset your password for your Ebony Bruce Travels account.</p>
-            
             <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
               <p><strong>This link will expire in ${data.expiresIn}.</strong></p>
-              <p>If you did not request a password reset, please ignore this email. Your password will remain unchanged.</p>
+              <p>If you did not request a password reset, please ignore this email.</p>
             </div>
-            
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.resetUrl}" 
-                 style="display: inline-block; background-color: #e74c3c; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                Reset Password
-              </a>
+              <a href="${data.resetUrl}" style="display: inline-block; background-color: #e74c3c; color: #fff; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
             </div>
-            
             <p style="font-size: 12px; color: #666;">Or copy and paste this link into your browser: ${data.resetUrl}</p>
-            
-            <div style="background-color: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #721c24;">Security Notice</h3>
-              <p>For your security, this password reset link will expire in ${data.expiresIn}. If you need to reset your password after it expires, please request a new reset link.</p>
-            </div>
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any questions or concerns, please contact our support team.</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Security Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Security Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated email. Please do not reply to this message.</p>
           </div>
         </body>
       </html>
     `;
   }
 
-
   private getBookingConfirmationEmailTemplate(data: BookingConfirmationEmailData): string {
-    const productTypeLabel = data.productType === 'HOTEL' 
-      ? 'Hotel' 
-      : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' 
-        ? 'Flight' 
-        : data.productType === 'CAR_RENTAL' 
-          ? 'Car Rental' 
-          : 'Booking';
-  
-    // ✅ Get passenger details
+    const productTypeLabel = data.productType === 'HOTEL' ? 'Hotel'
+      : data.productType === 'FLIGHT_INTERNATIONAL' || data.productType === 'FLIGHT_DOMESTIC' ? 'Flight'
+      : data.productType === 'CAR_RENTAL' ? 'Car Rental'
+      : 'Booking';
+
     const passengerName = data.passengerDetails?.name || data.customerName || 'Valued Customer';
     const passengerEmail = data.passengerDetails?.email || 'N/A';
     const passengerPhone = data.passengerDetails?.phone || 'N/A';
@@ -1275,8 +1008,7 @@ export class ResendService {
     const passengerCity = data.passengerDetails?.city || '';
     const passengerCountry = data.passengerDetails?.country || '';
     const otherPassengers = data.otherPassengers || [];
-  
-    // ✅ Get flight details
+
     const origin = data.bookingDetails?.origin || 'N/A';
     const destination = data.bookingDetails?.destination || 'N/A';
     const departureDate = data.bookingDetails?.departureDate || '';
@@ -1286,8 +1018,7 @@ export class ResendService {
     const cabinClass = data.bookingDetails?.cabinClass || 'Economy';
     const bookingClass = data.bookingDetails?.bookingClass || 'Economy';
     const stops = data.bookingDetails?.stops || 0;
-  
-    // ✅ Get hotel details
+
     const hotelName = data.bookingDetails?.hotelName || '';
     const hotelAddress = data.bookingDetails?.hotelAddress || '';
     const hotelCity = data.bookingDetails?.hotelCity || '';
@@ -1300,251 +1031,125 @@ export class ResendService {
     const numberOfRooms = data.bookingDetails?.numberOfRooms || 1;
     const boardType = data.bookingDetails?.boardType || 'Room Only';
     const guests = data.bookingDetails?.guests || 1;
-  
-    // ✅ Passenger section
+
     const passengerSection = `
       <div style="background-color: #f0f7ff; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
         <h3 style="margin-top: 0; color: #2c3e50;">👤 Passenger Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="padding: 6px 0; font-weight: bold; width: 35%;">Lead Passenger:</td>
-            <td style="padding: 6px 0; width: 65%; color: #2c3e50; font-weight: 500;">${passengerName}</td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; font-weight: bold;">Email:</td>
-            <td style="padding: 6px 0;">${passengerEmail}</td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; font-weight: bold;">Phone:</td>
-            <td style="padding: 6px 0;">${passengerPhone}</td>
-          </tr>
-          ${passengerAddress ? `
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold;">Address:</td>
-              <td style="padding: 6px 0;">${passengerAddress}${passengerCity ? `, ${passengerCity}` : ''}${passengerCountry ? `, ${passengerCountry}` : ''}</td>
-            </tr>` : ''}
-          ${otherPassengers.length > 0 ? `
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold; vertical-align: top;">Other Passengers:</td>
-              <td style="padding: 6px 0;">${otherPassengers.join(', ')}</td>
-            </tr>` : ''}
+          <tr><td style="padding: 6px 0; font-weight: bold; width: 35%;">Lead Passenger:</td><td style="padding: 6px 0; width: 65%; color: #2c3e50; font-weight: 500;">${passengerName}</td></tr>
+          <tr><td style="padding: 6px 0; font-weight: bold;">Email:</td><td style="padding: 6px 0;">${passengerEmail}</td></tr>
+          <tr><td style="padding: 6px 0; font-weight: bold;">Phone:</td><td style="padding: 6px 0;">${passengerPhone}</td></tr>
+          ${passengerAddress ? `<tr><td style="padding: 6px 0; font-weight: bold;">Address:</td><td style="padding: 6px 0;">${passengerAddress}${passengerCity ? `, ${passengerCity}` : ''}${passengerCountry ? `, ${passengerCountry}` : ''}</td></tr>` : ''}
+          ${otherPassengers.length > 0 ? `<tr><td style="padding: 6px 0; font-weight: bold; vertical-align: top;">Other Passengers:</td><td style="padding: 6px 0;">${otherPassengers.join(', ')}</td></tr>` : ''}
         </table>
       </div>
     `;
-  
-    // ✅ FLIGHT DETAILS SECTION (with full flight info)
+
     const isFlight = data.bookingDetails?.origin && data.bookingDetails?.destination;
     const flightDetailsSection = isFlight ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #3498db;">
         <h3 style="margin-top: 0; color: #2c3e50;">✈️ Flight Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
-          ${airlineName ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold; width: 35%;">Airline:</td>
-              <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${airlineName}</td>
-            </tr>` : ''}
-          ${flightNumber ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Flight Number:</td>
-              <td style="padding: 8px 0;">${flightNumber}</td>
-            </tr>` : ''}
-          <tr>
-            <td style="padding: 8px 0; font-weight: bold;">Route:</td>
-            <td style="padding: 8px 0; font-weight: 500;">${origin} → ${destination}</td>
-          </tr>
-          ${departureDate ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Departure Date:</td>
-              <td style="padding: 8px 0;">${new Date(departureDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
-            </tr>` : ''}
-          ${departureDate ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Departure Time:</td>
-              <td style="padding: 8px 0;">${new Date(departureDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
-            </tr>` : ''}
-          ${arrivalDate ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Arrival Date:</td>
-              <td style="padding: 8px 0;">${new Date(arrivalDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
-            </tr>` : ''}
-          ${arrivalDate ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Arrival Time:</td>
-              <td style="padding: 8px 0;">${new Date(arrivalDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
-            </tr>` : ''}
-          ${cabinClass ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Cabin Class:</td>
-              <td style="padding: 8px 0;">${cabinClass}</td>
-            </tr>` : ''}
-          ${bookingClass ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Booking Class:</td>
-              <td style="padding: 8px 0;">${bookingClass}</td>
-            </tr>` : ''}
-          <tr>
-            <td style="padding: 8px 0; font-weight: bold;">Stops:</td>
-            <td style="padding: 8px 0;">${stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`}</td>
-          </tr>
+          ${airlineName ? `<tr><td style="padding: 8px 0; font-weight: bold; width: 35%;">Airline:</td><td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${airlineName}</td></tr>` : ''}
+          ${flightNumber ? `<tr><td style="padding: 8px 0; font-weight: bold;">Flight Number:</td><td style="padding: 8px 0;">${flightNumber}</td></tr>` : ''}
+          ${data.bookingDetails?.isMultiCity && data.bookingDetails?.allSegments?.length > 0 ? `
+            <tr><td style="padding: 8px 0; font-weight: bold; vertical-align: top;">Route (Multi-City):</td>
+            <td style="padding: 8px 0;">
+              ${data.bookingDetails.allSegments.map((seg: any, idx: number) => `
+                <div style="margin-bottom: 5px; padding: 5px; background: #fff; border-radius: 4px; border: 1px solid #eee;">
+                  <strong>${idx + 1}.</strong> ${seg.from || 'N/A'} → ${seg.to || 'N/A'}
+                  ${seg.date ? `<br><span style="font-size: 11px; color: #666;">${new Date(seg.date).toLocaleDateString()}</span>` : ''}
+                  ${seg.airline ? `<br><span style="font-size: 11px; color: #666;">${seg.airline} ${seg.flightNumber ? `• Flight ${seg.flightNumber}` : ''}</span>` : ''}
+                </div>
+              `).join('')}
+            </td></tr>
+          ` : `
+            <tr><td style="padding: 8px 0; font-weight: bold;">Route:</td><td style="padding: 8px 0; font-weight: 500;">${origin} → ${destination}</td></tr>
+            ${departureDate ? `<tr><td style="padding: 8px 0; font-weight: bold;">Departure Date:</td><td style="padding: 8px 0;">${new Date(departureDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td></tr>` : ''}
+            ${departureDate ? `<tr><td style="padding: 8px 0; font-weight: bold;">Departure Time:</td><td style="padding: 8px 0;">${new Date(departureDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td></tr>` : ''}
+            ${arrivalDate ? `<tr><td style="padding: 8px 0; font-weight: bold;">Arrival Date:</td><td style="padding: 8px 0;">${new Date(arrivalDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td></tr>` : ''}
+            ${arrivalDate ? `<tr><td style="padding: 8px 0; font-weight: bold;">Arrival Time:</td><td style="padding: 8px 0;">${new Date(arrivalDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td></tr>` : ''}
+          `}
+          ${cabinClass ? `<tr><td style="padding: 8px 0; font-weight: bold;">Cabin Class:</td><td style="padding: 8px 0;">${cabinClass}</td></tr>` : ''}
+          ${bookingClass ? `<tr><td style="padding: 8px 0; font-weight: bold;">Booking Class:</td><td style="padding: 8px 0;">${bookingClass}</td></tr>` : ''}
+          <tr><td style="padding: 8px 0; font-weight: bold;">Stops:</td><td style="padding: 8px 0;">${stops === 0 ? 'Direct' : stops === 1 ? '1 stop' : `${stops} stops`}</td></tr>
         </table>
       </div>
     ` : '';
-  
- 
+
     const isHotel = data.bookingDetails?.hotelName;
     const hotelDetailsSection = isHotel ? `
       <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #e67e22;">
         <h3 style="margin-top: 0; color: #2c3e50;">🏨 Hotel Details</h3>
         <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="padding: 8px 0; font-weight: bold; width: 35%;">Hotel Name:</td>
-            <td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${hotelName}</td>
-          </tr>
-          ${hotelRating ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Rating:</td>
-              <td style="padding: 8px 0;">${'⭐'.repeat(Math.round(hotelRating))} ${hotelRating}/5</td>
-            </tr>` : ''}
-          ${hotelAddress ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Address:</td>
-              <td style="padding: 8px 0;">${hotelAddress}</td>
-            </tr>` : ''}
-          ${hotelCity && hotelCountry ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Location:</td>
-              <td style="padding: 8px 0;">${hotelCity}, ${hotelCountry}</td>
-            </tr>` : ''}
-          ${hotelPhone ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Phone:</td>
-              <td style="padding: 8px 0;">${hotelPhone}</td>
-            </tr>` : ''}
-          ${roomType ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Room Type:</td>
-              <td style="padding: 8px 0;">${roomType}</td>
-            </tr>` : ''}
-          ${boardType ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Board Type:</td>
-              <td style="padding: 8px 0;">${boardType}</td>
-            </tr>` : ''}
-          ${numberOfRooms ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Number of Rooms:</td>
-              <td style="padding: 8px 0;">${numberOfRooms}</td>
-            </tr>` : ''}
-          ${guests ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Total Guests:</td>
-              <td style="padding: 8px 0;">${guests}</td>
-            </tr>` : ''}
-          ${data.bookingDetails?.checkInDate ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Check-in:</td>
-              <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkInDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} 
-              ${hotelCheckInTime ? `(from ${hotelCheckInTime})` : ''}</td>
-            </tr>` : ''}
-          ${data.bookingDetails?.checkOutDate ? `
-            <tr>
-              <td style="padding: 8px 0; font-weight: bold;">Check-out:</td>
-              <td style="padding: 8px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              ${hotelCheckOutTime ? `(until ${hotelCheckOutTime})` : ''}</td>
-            </tr>` : ''}
+          <tr><td style="padding: 8px 0; font-weight: bold; width: 35%;">Hotel Name:</td><td style="padding: 8px 0; width: 65%; color: #2c3e50; font-weight: 500;">${hotelName}</td></tr>
+          ${hotelRating ? `<tr><td style="padding: 8px 0; font-weight: bold;">Rating:</td><td style="padding: 8px 0;">${'⭐'.repeat(Math.round(hotelRating))} ${hotelRating}/5</td></tr>` : ''}
+          ${hotelAddress ? `<tr><td style="padding: 8px 0; font-weight: bold;">Address:</td><td style="padding: 8px 0;">${hotelAddress}</td></tr>` : ''}
+          ${hotelCity && hotelCountry ? `<tr><td style="padding: 8px 0; font-weight: bold;">Location:</td><td style="padding: 8px 0;">${hotelCity}, ${hotelCountry}</td></tr>` : ''}
+          ${hotelPhone ? `<tr><td style="padding: 8px 0; font-weight: bold;">Phone:</td><td style="padding: 8px 0;">${hotelPhone}</td></tr>` : ''}
+          ${roomType ? `<tr><td style="padding: 8px 0; font-weight: bold;">Room Type:</td><td style="padding: 8px 0;">${roomType}</td></tr>` : ''}
+          ${boardType ? `<tr><td style="padding: 8px 0; font-weight: bold;">Board Type:</td><td style="padding: 8px 0;">${boardType}</td></tr>` : ''}
+          ${numberOfRooms ? `<tr><td style="padding: 8px 0; font-weight: bold;">Number of Rooms:</td><td style="padding: 8px 0;">${numberOfRooms}</td></tr>` : ''}
+          ${guests ? `<tr><td style="padding: 8px 0; font-weight: bold;">Total Guests:</td><td style="padding: 8px 0;">${guests}</td></tr>` : ''}
+          ${data.bookingDetails?.checkInDate ? `<tr><td style="padding: 8px 0; font-weight: bold;">Check-in:</td><td style="padding: 8px 0;">${new Date(data.bookingDetails.checkInDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${hotelCheckInTime ? `(from ${hotelCheckInTime})` : ''}</td></tr>` : ''}
+          ${data.bookingDetails?.checkOutDate ? `<tr><td style="padding: 8px 0; font-weight: bold;">Check-out:</td><td style="padding: 8px 0;">${new Date(data.bookingDetails.checkOutDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${hotelCheckOutTime ? `(until ${hotelCheckOutTime})` : ''}</td></tr>` : ''}
         </table>
       </div>
     ` : '';
-  
-    // Determine which details section to show
+
     const detailsSection = isHotel ? hotelDetailsSection : flightDetailsSection;
-  
-    const defaultNoShowWording =
-      'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.';
+
+    const defaultNoShowWording = 'In case of no-show, the hotel may charge the full stay amount to the card used at booking. Our service fee is non-refundable once the booking is confirmed.';
     const noShowText = data.noShowWording || (data.productType === 'HOTEL' ? defaultNoShowWording : null);
-    const hasHotelPolicy =
-      data.productType === 'HOTEL' && (data.cancellationDeadline || data.cancellationPolicySummary || noShowText);
-    const hotelPolicySection = hasHotelPolicy
-      ? `
-        <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0; border-radius: 5px;">
-          <h3 style="margin-top: 0; color: #856404;">📋 Cancellation & No-Show Policy</h3>
-          ${data.cancellationDeadline ? `<p style="margin: 5px 0;"><strong>Cancellation deadline (UTC):</strong> ${typeof data.cancellationDeadline === 'string' ? data.cancellationDeadline : new Date(data.cancellationDeadline).toISOString().replace('T', ' ').slice(0, 19)} UTC</p>` : ''}
-          ${data.cancellationPolicySummary ? `<p style="margin: 5px 0; margin-top: 8px;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
-          ${noShowText ? `<p style="margin: 10px 0 0 0;"><strong>No-show:</strong> ${noShowText}</p>` : ''}
-        </div>
-      `
-      : '';
-  
+    const hasHotelPolicy = data.productType === 'HOTEL' && (data.cancellationDeadline || data.cancellationPolicySummary || noShowText);
+    const hotelPolicySection = hasHotelPolicy ? `
+      <div style="background-color: #fff3cd; border-left: 4px solid #856404; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #856404;">📋 Cancellation & No-Show Policy</h3>
+        ${data.cancellationDeadline ? `<p style="margin: 5px 0;"><strong>Cancellation deadline (UTC):</strong> ${typeof data.cancellationDeadline === 'string' ? data.cancellationDeadline : new Date(data.cancellationDeadline).toISOString().replace('T', ' ').slice(0, 19)} UTC</p>` : ''}
+        ${data.cancellationPolicySummary ? `<p style="margin: 5px 0; margin-top: 8px;"><strong>Policy:</strong> ${data.cancellationPolicySummary}</p>` : ''}
+        ${noShowText ? `<p style="margin: 10px 0 0 0;"><strong>No-show:</strong> ${noShowText}</p>` : ''}
+      </div>
+    ` : '';
+
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Booking Confirmed - ${data.bookingReference}</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Booking Confirmed - ${data.bookingReference}</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px; border-radius: 8px;">
             <h1 style="color: #2c3e50; margin: 0; font-size: 28px;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-top: 0;">
-              Booking Confirmed! 🎉
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-top: 0;">Booking Confirmed! 🎉</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>We're excited to confirm that your ${productTypeLabel.toLowerCase()} booking has been successfully confirmed!</p>
-            
             <div style="background-color: #d4edda; border-left: 4px solid #27ae60; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0; color: #155724;">Booking Reference</h3>
               <p style="margin: 5px 0; font-size: 24px; font-weight: bold; color: #155724;">${data.bookingReference}</p>
               <p style="margin: 5px 0; font-size: 12px; color: #666;">Please keep this reference number for your records</p>
             </div>
-            
             ${passengerSection}
             ${detailsSection}
             ${hotelPolicySection}
-            
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0; color: #2c3e50;">💰 Pricing Summary</h3>
               <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Base Price:</td>
-                  <td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.basePrice.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Service Fee:</td>
-                  <td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.serviceFee.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Markup:</td>
-                  <td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.markupAmount.toFixed(2)}</td>
-                </tr>
-                <tr style="font-weight: bold; font-size: 18px;">
-                  <td style="padding: 12px 0; border-top: 2px solid #2c3e50;">Total Amount:</td>
-                  <td style="text-align: right; padding: 12px 0; border-top: 2px solid #2c3e50;">${data.pricing.currency} ${data.pricing.totalAmount.toFixed(2)}</td>
-                </tr>
+                <tr><td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Base Price:</td><td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.basePrice.toFixed(2)}</td></tr>
+                <tr><td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Service Fee:</td><td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.serviceFee.toFixed(2)}</td></tr>
+                <tr><td style="padding: 8px 0; border-bottom: 1px solid #ddd;">Markup:</td><td style="text-align: right; padding: 8px 0; border-bottom: 1px solid #ddd;">${data.pricing.currency} ${data.pricing.markupAmount.toFixed(2)}</td></tr>
+                <tr style="font-weight: bold; font-size: 18px;"><td style="padding: 12px 0; border-top: 2px solid #2c3e50;">Total Amount:</td><td style="text-align: right; padding: 12px 0; border-top: 2px solid #2c3e50;">${data.pricing.currency} ${data.pricing.totalAmount.toFixed(2)}</td></tr>
               </table>
             </div>
-            
             <div style="background-color: #d1ecf1; border-left: 4px solid #0c5460; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0; color: #0c5460;">What's Next?</h3>
               <p>Your booking is confirmed and you should receive a separate payment receipt shortly.</p>
               <p>You can view your booking details and manage your reservation by logging into your account.</p>
-              <p style="margin-top: 10px;">If you have any questions, please don't hesitate to contact our support team.</p>
             </div>
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
               <p>Thank you for choosing Ebony Bruce Travels!</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
             </div>
           </div>
-          
           <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
             <p>This is an automated email. Please do not reply to this message.</p>
             <p>Confirmation Date: ${data.confirmationDate.toLocaleString()}</p>
@@ -1559,48 +1164,34 @@ export class ResendService {
 
     const bookingDetailsSection = data.bookingDetails
       ? data.bookingDetails.hotelName
-        ? `
-          <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        ? `<div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
             <h3 style="margin-top: 0;">Booking Details</h3>
             <p style="margin: 5px 0;"><strong>Hotel:</strong> ${data.bookingDetails.hotelName}</p>
             ${data.bookingDetails.checkInDate ? `<p style="margin: 5px 0;"><strong>Check-in:</strong> ${new Date(data.bookingDetails.checkInDate).toLocaleDateString()}</p>` : ''}
             ${data.bookingDetails.checkOutDate ? `<p style="margin: 5px 0;"><strong>Check-out:</strong> ${new Date(data.bookingDetails.checkOutDate).toLocaleDateString()}</p>` : ''}
-          </div>
-        `
+          </div>`
         : data.bookingDetails.origin && data.bookingDetails.destination
-          ? `
-          <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-            <h3 style="margin-top: 0;">Booking Details</h3>
-            <p style="margin: 5px 0;"><strong>Route:</strong> ${data.bookingDetails.origin} → ${data.bookingDetails.destination}</p>
-            ${data.bookingDetails.departureDate ? `<p style="margin: 5px 0;"><strong>Departure:</strong> ${new Date(data.bookingDetails.departureDate).toLocaleDateString()}</p>` : ''}
-            ${data.bookingDetails.arrivalDate ? `<p style="margin: 5px 0;"><strong>Arrival:</strong> ${new Date(data.bookingDetails.arrivalDate).toLocaleDateString()}</p>` : ''}
-          </div>
-        `
+          ? `<div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
+              <h3 style="margin-top: 0;">Booking Details</h3>
+              <p style="margin: 5px 0;"><strong>Route:</strong> ${data.bookingDetails.origin} → ${data.bookingDetails.destination}</p>
+              ${data.bookingDetails.departureDate ? `<p style="margin: 5px 0;"><strong>Departure:</strong> ${new Date(data.bookingDetails.departureDate).toLocaleDateString()}</p>` : ''}
+              ${data.bookingDetails.arrivalDate ? `<p style="margin: 5px 0;"><strong>Arrival:</strong> ${new Date(data.bookingDetails.arrivalDate).toLocaleDateString()}</p>` : ''}
+            </div>`
           : ''
       : '';
 
     return `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Payment Receipt</title>
-        </head>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Payment Receipt</title></head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin-bottom: 20px;">
             <h1 style="color: #2c3e50; margin: 0;">Ebony Bruce Travels</h1>
           </div>
-          
           <div style="background-color: #fff; padding: 20px; border: 1px solid #ddd;">
-            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-              Payment Receipt
-            </h2>
-            
+            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">Payment Receipt</h2>
             <p>Dear ${data.customerName || 'Valued Customer'},</p>
-            
             <p>Thank you for your payment. This email serves as your receipt for the ${productTypeLabel.toLowerCase()} booking.</p>
-            
             <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
               <h3 style="margin-top: 0;">Payment Information</h3>
               <p style="margin: 5px 0;"><strong>Booking Reference:</strong> ${data.bookingReference}</p>
@@ -1608,39 +1199,16 @@ export class ResendService {
               <p style="margin: 5px 0;"><strong>Payment Date:</strong> ${data.paymentDate.toLocaleString()}</p>
               ${data.paymentMethod ? `<p style="margin: 5px 0;"><strong>Payment Method:</strong> ${data.paymentMethod}</p>` : ''}
             </div>
-            
             ${bookingDetailsSection}
-            
             <div style="background-color: #e8f4f8; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0;">
               <h3 style="margin-top: 0; color: #0c5460;">Amount Paid</h3>
-              <p style="font-size: 32px; font-weight: bold; color: #0c5460; margin: 10px 0;">
-                ${data.currency.toUpperCase()} ${(data.amount / 100).toFixed(2)}
-              </p>
+              <p style="font-size: 32px; font-weight: bold; color: #0c5460; margin: 10px 0;">${data.currency.toUpperCase()} ${(data.amount / 100).toFixed(2)}</p>
               <p style="font-size: 12px; color: #666; margin: 5px 0;">Payment processed successfully</p>
             </div>
-            
-            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
-              <h3 style="margin-top: 0; color: #856404;">Important Notes</h3>
-              <ul style="margin: 10px 0; padding-left: 20px; color: #856404;">
-                <li>Please keep this receipt for your records</li>
-                <li>This receipt confirms that your payment has been processed</li>
-                <li>If you have any questions about this payment, please contact our support team</li>
-              </ul>
-            </div>
-            
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-              <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
               <p>Thank you for choosing Ebony Bruce Travels!</p>
-              <p style="margin-top: 20px;">
-                Best regards,<br>
-                <strong>The Ebony Bruce Travels Team</strong>
-              </p>
+              <p style="margin-top: 20px;">Best regards,<br><strong>The Ebony Bruce Travels Team</strong></p>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
-            <p>This is an automated email. Please do not reply to this message.</p>
-            <p>This receipt is for your records. Please save or print this email for your files.</p>
           </div>
         </body>
       </html>
