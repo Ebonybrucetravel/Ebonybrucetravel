@@ -69,46 +69,250 @@ export default function BookingDetailsPage() {
   }, [params.id, router]);
 
   const transformBookingData = (apiData: any) => {
-    // Map API response to component format
-    const leadPassenger = Array.isArray(apiData.passengerInfo) 
-      ? apiData.passengerInfo[0] 
+    const leadPassenger = Array.isArray(apiData.passengerInfo)
+      ? apiData.passengerInfo[0]
       : apiData.passengerInfo;
-      
+
     const passengerName = leadPassenger
       ? `${leadPassenger.firstName} ${leadPassenger.lastName}`
       : apiData.user?.name || 'Guest';
-    
+
+    const pd = apiData.providerData || {};
+    const bookingData = apiData.bookingData || {};
+    const productType = apiData.productType || '';
+    const isFlight = productType.includes('FLIGHT');
+    const isHotel = productType === 'HOTEL';
+    const isCar = productType === 'CAR_RENTAL';
+
+    // ============ FLIGHT ============
+    let from = 'N/A';
+    let to = 'N/A';
+    let departure = 'N/A';
+    let arrival = 'N/A';
+    let airlineName: string | null = null;
+    let flightNumber: string | null = null; // ✅ declared ONCE
+    let airlineCode: string | null = null;  // ✅ declared ONCE
+    let pnrNumber = 'Not issued yet';
+
+    if (isFlight) {
+      const flightSummary =
+        pd.FlightBookingSummary ||
+        pd.FlightBookingResult?.FlightBookingSummaryModel ||
+        null;
+      const summaryModel = flightSummary?.FlightSummaryModel || flightSummary || {};
+      const flightCombination =
+        summaryModel.FlightCombination || flightSummary?.FlightCombination || {};
+      const flightModels = flightCombination.FlightModels || summaryModel.FlightModels || [];
+
+      const outbound = flightModels[0] || {};
+      const legs = outbound.FlightLegs || [];
+      const firstLeg = legs[0] || {};
+      const lastLeg = legs[legs.length - 1] || firstLeg;
+
+      from = outbound.DepartureCode || firstLeg.DepartureCode || 'N/A';
+      to = outbound.ArrivalCode || lastLeg.DestinationCode || 'N/A';
+      departure = outbound.DepartureTime || firstLeg.StartTime || 'N/A';
+      arrival = outbound.ArrivalTime || lastLeg.EndTime || 'N/A';
+      airlineName = outbound.AirlineName || firstLeg.AirlineName || null;
+      airlineCode = outbound.Airline || firstLeg.AirlineCode || null;
+      flightNumber = outbound.Name || outbound.FlightNumber || firstLeg.FlightNumber || null;
+
+      pnrNumber =
+        bookingData?.pnrReferenceNumber ||
+        bookingData?.PnrReferenceNumber ||
+        pd?.PnrReferenceNumber ||
+        pd?.FlightBookingSummary?.PnrReferenceNumber ||
+        'Not issued yet';
+    }
+
+    // ============ HOTEL ============
+    let hotelName: string | null = null;
+    let hotelAddress: string | null = null;
+    let hotelCity: string | null = null;
+    let hotelCountry: string | null = null;
+    let checkInDate: string | null = null;
+    let checkOutDate: string | null = null;
+    let roomType: string | null = null;
+    let boardType: string | null = null;
+    let numberOfRooms: number | null = null;
+    let totalGuests: number | null = null;
+
+    if (isHotel) {
+      const hotelDetails = bookingData.hotelDetails || {};
+      hotelName = hotelDetails.hotelName || bookingData.hotelName || 'Hotel';
+      hotelAddress = hotelDetails.hotelAddress || bookingData.hotelAddress || '';
+      hotelCity = hotelDetails.hotelCity || bookingData.hotelCity || '';
+      hotelCountry = hotelDetails.hotelCountry || bookingData.hotelCountry || '';
+      checkInDate = bookingData.checkInDate || null;
+      checkOutDate = bookingData.checkOutDate || null;
+      roomType = hotelDetails.roomType || bookingData.roomType || 'Standard Room';
+      boardType = hotelDetails.boardType || bookingData.boardType || 'Room Only';
+      numberOfRooms = bookingData.totalRooms || hotelDetails.numberOfRooms || 1;
+      totalGuests = Array.isArray(bookingData.guests)
+        ? bookingData.guests.length
+        : bookingData.guests || 1;
+    }
+
+    // ============ CAR RENTAL ============
+    let pickupLocation: string | null = null;
+    let dropoffLocation: string | null = null;
+    let pickupDateTime: string | null = null;
+    let dropoffDateTime: string | null = null;
+    let vehicleType: string | null = null;
+    let carProvider: string | null = null;
+    let transferType: string | null = null;
+
+    if (isCar) {
+      const offer = bookingData.offerData || {};
+      const start = offer.start || {};
+      const end = offer.end || {};
+      const vehicle = offer.vehicle || {};
+      const provider = offer.serviceProvider || {};
+
+      pickupLocation =
+        start.locationCode ||
+        bookingData.pickup_location ||
+        bookingData.pickupLocation ||
+        'N/A';
+
+      dropoffLocation =
+        end.locationCode ||
+        bookingData.dropoff_location ||
+        bookingData.dropoffLocation ||
+        'N/A';
+
+      const flatPickup = bookingData.flight_date
+        ? `${bookingData.flight_date}T${bookingData.flight_time || '00:00'}:00`
+        : null;
+      const flatDropoff = flatPickup;
+
+      pickupDateTime =
+        start.dateTime || bookingData.pickupDateTime || flatPickup || 'N/A';
+      dropoffDateTime =
+        end.dateTime || bookingData.dropoffDateTime || flatDropoff || 'N/A';
+
+      vehicleType =
+        vehicle.description ||
+        offer.vehicleType ||
+        bookingData.vehicleType ||
+        bookingData.transfer_type ||
+        'N/A';
+
+      carProvider =
+        provider.name ||
+        bookingData.serviceProvider ||
+        bookingData.carProvider ||
+        (bookingData.amadeus_offer_id ? 'Amadeus' : 'N/A');
+
+      transferType =
+        bookingData.transfer_type || offer.transferType || 'PRIVATE';
+
+      // ✅ Reuse flightNumber and airlineCode declared at the top
+      if (!flightNumber) {
+        flightNumber = bookingData.flight_number || null;
+      }
+      if (!airlineCode) {
+        airlineCode = bookingData.airline_code || null;
+      }
+    }
+
+    // ============ PASSENGERS ============
+    const providerTravellers = pd?.FlightBookingSummary?.TravellerDetails || [];
+    const allPassengers: any[] = []; // ✅ NOW DECLARED
+
+    if (Array.isArray(apiData.passengerInfo)) {
+      allPassengers.push(...apiData.passengerInfo);
+    } else if (apiData.passengerInfo) {
+      allPassengers.push(apiData.passengerInfo);
+    }
+
+    if (allPassengers.length === 0 && providerTravellers.length > 0) {
+      for (const t of providerTravellers) {
+        allPassengers.push({
+          firstName: t.FirstName,
+          lastName: t.LastName,
+          title: t.Title,
+          gender: t.Gender,
+          dateOfBirth: t.DateOfBirth,
+          passengerType: t.PassengerType,
+          email: t.Email,
+          phone: t.PhoneNumber,
+        });
+      }
+    }
+
+    // Hotel guests fallback
+    if (allPassengers.length === 0 && isHotel && Array.isArray(bookingData.guests)) {
+      for (const g of bookingData.guests) {
+        allPassengers.push({
+          firstName: g.name?.firstName || '',
+          lastName: g.name?.lastName || '',
+          title: g.name?.title || '',
+          email: g.contact?.email,
+          phone: g.contact?.phone,
+        });
+      }
+    }
+
+    // Car passengers fallback
+    if (allPassengers.length === 0 && isCar && Array.isArray(bookingData.passengers)) {
+      for (const p of bookingData.passengers) {
+        allPassengers.push({
+          firstName: p.name?.firstName || '',
+          lastName: p.name?.lastName || '',
+          title: p.name?.title || '',
+          email: p.contact?.email,
+          phone: p.contact?.phone,
+        });
+      }
+    }
+
     return {
       id: apiData.id,
-      type: apiData.productType?.replace('_', ' ') || 'Flight',
+      type: productType.replace(/_/g, ' ') || 'Booking',
       source: apiData.provider || 'Unknown',
       customer: passengerName,
       email: leadPassenger?.email || apiData.user?.email,
       phone: leadPassenger?.phone || apiData.user?.phone,
-      price: apiData.totalAmount ? `${apiData.currency || '$'}${apiData.totalAmount.toLocaleString()}` : '$0.00',
+      price: apiData.totalAmount
+        ? `${apiData.currency || '$'}${apiData.totalAmount.toLocaleString()}`
+        : '$0.00',
       rawPrice: apiData.totalAmount,
       status: apiData.status || 'Pending',
       paymentStatus: apiData.paymentStatus || 'N/A',
-      date: apiData.createdAt ? new Date(apiData.createdAt).toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: '2-digit', 
-        year: 'numeric' 
-      }) : 'N/A',
+      date: apiData.createdAt
+        ? new Date(apiData.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: '2-digit',
+            year: 'numeric',
+          })
+        : 'N/A',
       bookingReference: apiData.reference || apiData.id,
-      from: apiData.bookingData?.origin || apiData.bookingData?.from || 'N/A',
-      to: apiData.bookingData?.destination || apiData.bookingData?.to || 'N/A',
-      departure: apiData.bookingData?.departureDate || 'N/A',
-      arrival: apiData.bookingData?.returnDate || 'N/A',
-      paymentMethod: apiData.paymentMethod || 'Credit Card',
-      currency: apiData.currency || 'USD',
-      productType: apiData.productType,
+      productType,
       provider: apiData.provider,
+      currency: apiData.currency || 'USD',
+
+      // Flight fields
+      from, to, departure, arrival,
+      airlineName, flightNumber, pnrNumber, airlineCode,
+
+      // Hotel fields
+      hotelName, hotelAddress, hotelCity, hotelCountry,
+      checkInDate, checkOutDate, roomType, boardType,
+      numberOfRooms, totalGuests,
+
+      // Car fields
+      pickupLocation, dropoffLocation, pickupDateTime, dropoffDateTime,
+      vehicleType, carProvider, transferType,
+
+      // Common
+      paymentMethod: apiData.paymentMethod || 'Credit Card',
       passengerInfo: leadPassenger,
-      allPassengers: Array.isArray(apiData.passengerInfo) ? apiData.passengerInfo : 
-                    (apiData.passengerInfo?.travellers ? [apiData.passengerInfo, ...apiData.passengerInfo.travellers] : [apiData.passengerInfo]),
+      allPassengers,
       bookingData: apiData.bookingData,
+      providerData: apiData.providerData,
       cancellationRequests: apiData.cancellationRequests || [],
-      cancellationRequestId: apiData.cancellationRequests?.[0]?.id 
+      cancellationRequestId: apiData.cancellationRequests?.[0]?.id,
     };
   };
 
@@ -375,18 +579,27 @@ export default function BookingDetailsPage() {
               </div>
             </div>
 
-            {/* Trip Details */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                        {/* Trip Details */}
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip Details</h2>
               <div className="space-y-4">
+                {/* Product Type Badge */}
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
                   <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-                    {booking.type.includes('FLIGHT') ? (
-                      <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                    ) : booking.type.includes('HOTEL') ? (
-                      <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
-                    ) : (
-                      <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
+                    {booking.productType?.includes('FLIGHT') && (
+                      <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                    )}
+                    {booking.productType === 'HOTEL' && (
+                      <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" />
+                      </svg>
+                    )}
+                    {booking.productType === 'CAR_RENTAL' && (
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" />
+                      </svg>
                     )}
                   </div>
                   <div className="flex-1">
@@ -394,40 +607,184 @@ export default function BookingDetailsPage() {
                     <p className="text-sm text-gray-500">Provider: {booking.source}</p>
                   </div>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">From</p>
-                    <p className="font-medium text-gray-900">{booking.from}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">To</p>
-                    <p className="font-medium text-gray-900">{booking.to}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Departure</p>
-                    <p className="font-medium text-gray-900">{booking.departure}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Arrival</p>
-                    <p className="font-medium text-gray-900">{booking.arrival}</p>
-                  </div>
-                  {(booking.productType?.includes('FLIGHT') || booking.type?.includes('Flight')) && (
+
+                {/* ============ FLIGHT LAYOUT ============ */}
+                {booking.productType?.includes('FLIGHT') && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">From</p>
+                      <p className="font-medium text-gray-900">{booking.from}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">To</p>
+                      <p className="font-medium text-gray-900">{booking.to}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Departure</p>
+                      <p className="font-medium text-gray-900">
+                        {booking.departure && booking.departure !== 'N/A'
+                          ? new Date(booking.departure).toLocaleString('en-GB', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Arrival</p>
+                      <p className="font-medium text-gray-900">
+                        {booking.arrival && booking.arrival !== 'N/A'
+                          ? new Date(booking.arrival).toLocaleString('en-GB', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    {booking.airlineName && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Airline</p>
+                        <p className="font-medium text-gray-900">{booking.airlineName}</p>
+                      </div>
+                    )}
+                    {booking.flightNumber && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Flight Number</p>
+                        <p className="font-medium text-gray-900">{booking.flightNumber}</p>
+                      </div>
+                    )}
                     <div className="col-span-2 mt-2 pt-4 border-t border-gray-100">
                       <p className="text-xs text-gray-500 mb-1">Airline PNR Number</p>
                       <p className="font-mono font-bold text-[#33a8da]">
-                        {booking.pnrNumber || 
-                         booking.bookingData?.pnrReferenceNumber ||
-                         booking.bookingData?.pnrNumber || 
-                         booking.bookingData?.PnReferenceNumber || 
-                         booking.bookingData?.pnReferenceNumber || 
-                         booking.bookingData?.FlightBookingResult?.PnReferenceNumber ||
-                         booking.bookingData?.FlightBookingSummary?.PnReferenceNumber ||
-                         'Not issued yet'}
+                        {booking.pnrNumber || 'Not issued yet'}
                       </p>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* ============ HOTEL LAYOUT ============ */}
+                {booking.productType === 'HOTEL' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-500 mb-1">Hotel Name</p>
+                        <p className="font-medium text-gray-900">
+                          {booking.hotelName || 'Hotel'}
+                        </p>
+                      </div>
+                      {booking.hotelAddress && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-gray-500 mb-1">Address</p>
+                          <p className="font-medium text-gray-900">
+                            {booking.hotelAddress}
+                            {booking.hotelCity ? `, ${booking.hotelCity}` : ''}
+                            {booking.hotelCountry ? `, ${booking.hotelCountry}` : ''}
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Check-in</p>
+                        <p className="font-medium text-gray-900">
+                          {booking.checkInDate
+                            ? new Date(booking.checkInDate).toLocaleDateString('en-GB', {
+                                dateStyle: 'medium',
+                              })
+                            : 'N/A'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Check-out</p>
+                        <p className="font-medium text-gray-900">
+                          {booking.checkOutDate
+                            ? new Date(booking.checkOutDate).toLocaleDateString('en-GB', {
+                                dateStyle: 'medium',
+                              })
+                            : 'N/A'}
+                        </p>
+                      </div>
+                      {booking.roomType && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Room Type</p>
+                          <p className="font-medium text-gray-900">{booking.roomType}</p>
+                        </div>
+                      )}
+                      {booking.boardType && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Board Type</p>
+                          <p className="font-medium text-gray-900">{booking.boardType}</p>
+                        </div>
+                      )}
+                      {booking.numberOfRooms && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Rooms</p>
+                          <p className="font-medium text-gray-900">{booking.numberOfRooms}</p>
+                        </div>
+                      )}
+                      {booking.totalGuests && (
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">Guests</p>
+                          <p className="font-medium text-gray-900">{booking.totalGuests}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                                {/* ============ CAR RENTAL LAYOUT ============ */}
+                                {booking.productType === 'CAR_RENTAL' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <p className="text-xs font-bold text-blue-700 uppercase mb-2">Pickup</p>
+                      <p className="font-bold text-lg">{booking.pickupLocation || 'N/A'}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {booking.pickupDateTime && booking.pickupDateTime !== 'N/A'
+                          ? new Date(booking.pickupDateTime).toLocaleString('en-GB', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : 'Date & time TBD'}
+                      </p>
+                    </div>
+
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <p className="text-xs font-bold text-green-700 uppercase mb-2">Dropoff</p>
+                      <p className="font-bold text-lg">{booking.dropoffLocation || 'N/A'}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {booking.dropoffDateTime && booking.dropoffDateTime !== 'N/A'
+                          ? new Date(booking.dropoffDateTime).toLocaleString('en-GB', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                          : 'Date & time TBD'}
+                      </p>
+                    </div>
+
+                    {booking.vehicleType && booking.vehicleType !== 'N/A' && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Vehicle / Transfer Type</p>
+                        <p className="font-medium text-gray-900">{booking.vehicleType}</p>
+                      </div>
+                    )}
+                    {booking.carProvider && booking.carProvider !== 'N/A' && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Provider</p>
+                        <p className="font-medium text-gray-900">{booking.carProvider}</p>
+                      </div>
+                    )}
+                    {booking.flightNumber && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Flight Number</p>
+                        <p className="font-medium text-gray-900">{booking.flightNumber}</p>
+                      </div>
+                    )}
+                    {booking.airlineCode && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Airline Code</p>
+                        <p className="font-medium text-gray-900">{booking.airlineCode}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -437,7 +794,9 @@ export default function BookingDetailsPage() {
                 {booking.allPassengers.map((p: any, idx: number) => (
                   <div key={idx} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                     <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                      {booking.allPassengers.length > 1 ? `Passenger #${idx + 1} (${p.type || 'Adult'})` : 'Passenger Details'}
+                    {booking.allPassengers.length > 1
+  ? `${booking.productType === 'HOTEL' ? 'Guest' : 'Passenger'} #${idx + 1} (${p.passengerType || p.type || 'Adult'})`
+  : booking.productType === 'HOTEL' ? 'Guest Details' : 'Passenger Details'}
                     </h2>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {p.firstName && (
