@@ -1959,6 +1959,10 @@ const renderRoomTypesList = () => {
                 hotel: item,
                 type: 'hotels',
                 isMultiRoom: true,
+                hotelAddress: fullDetails?.formattedAddress || '',
+  hotelCity: fullDetails?.address?.cityName || '',
+  hotelCountry: fullDetails?.address?.countryCode || '',
+  hotelDescription: getDescriptionText(fullDetails?.description) || '',
               });
             }}
             className="bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold px-6 py-3 rounded-lg text-sm transition whitespace-nowrap"
@@ -2437,6 +2441,10 @@ const renderPolicies = () => {
         hotel: item,
         type: 'hotels',
         isMultiRoom: true,
+        hotelAddress: fullDetails?.formattedAddress || '',
+  hotelCity: fullDetails?.address?.cityName || '',
+  hotelCountry: fullDetails?.address?.countryCode || '',
+  hotelDescription: getDescriptionText(fullDetails?.description) || '',
       });
       return;
     }
@@ -2468,6 +2476,10 @@ const renderPolicies = () => {
         roomPrimaryImage: selectedRoomType.primaryImage || selectedRoomType.image || '',
         hotel: item,
         type: 'hotels',
+        hotelAddress: fullDetails?.formattedAddress || '',
+  hotelCity: fullDetails?.address?.cityName || '',
+  hotelCountry: fullDetails?.address?.countryCode || '',
+  hotelDescription: getDescriptionText(fullDetails?.description) || '',
       };
       onBook(bookingData);
     } else {

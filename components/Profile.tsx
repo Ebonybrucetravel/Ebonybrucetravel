@@ -563,9 +563,11 @@ const extractFlightDetails = (booking: Booking) => {
   const isHotel = booking.productType === 'HOTEL';
   
   if (isHotel) {
-    // Extract hotel details from bookingData
-    const hotelName = bookingData?.hotelName || bookingData?.hotel?.name || 
-                      bookingData?.hotel_name || 'Hotel';
+    const hotelName = bookingData?.hotelDetails?.hotelName ||
+    bookingData?.hotelName || 
+    bookingData?.hotel?.name || 
+    bookingData?.hotel_name || 
+    'Hotel';
     const hotelId = bookingData?.hotelId || bookingData?.hotel?.hotelId || booking.id;
     const hotelOfferId = bookingData?.amadeus_offer_id || bookingData?.offerId || 'N/A';
     
@@ -653,39 +655,162 @@ const extractFlightDetails = (booking: Booking) => {
     };
   }
   
-  // For Wakanow flights
-  if (booking.provider === 'WAKANOW' && providerData) {
-    const flightSummaryModel = providerData?.FlightBookingSummary?.FlightSummaryModel;
-    const flightCombination = flightSummaryModel?.FlightCombination;
-    const flightModels = flightCombination?.FlightModels || [];
-    const outboundFlight = flightModels[0] || {};
-    const flightLegs = outboundFlight?.FlightLegs || [];
-    const firstLeg = flightLegs[0] || {};
-    const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
-    
+  // ============ CAR RENTAL ============
+  if (booking.productType === 'CAR_RENTAL') {
+    const pickupLocation =
+      bookingData?.pickup_location ||
+      bookingData?.pickupLocation ||
+      bookingData?.pickupLocationCode ||
+      bookingData?.offerData?.start?.locationCode ||
+      '';
+
+    const dropoffLocation =
+      bookingData?.dropoff_location ||
+      bookingData?.dropoffLocation ||
+      bookingData?.dropoffLocationCode ||
+      bookingData?.offerData?.end?.locationCode ||
+      '';
+
+      const rawType = bookingData?.transfer_type || bookingData?.vehicleType;
+      const transferLabel = (() => {
+        if (!rawType) return 'Car Rental';
+        const lower = String(rawType).toLowerCase();
+        if (lower === 'private') return 'Private Transfer';
+        if (lower === 'shared') return 'Shared Transfer';
+        if (lower === 'taxi') return 'Taxi Transfer';
+        if (lower === 'luxury') return 'Luxury Transfer';
+        if (lower === 'hourly') return 'Hourly Car Rental';
+        return String(rawType);
+      })();
+  
+      const vehicleType =
+        bookingData?.vehicle?.description ||
+        bookingData?.vehicleDescription ||
+        bookingData?.offerData?.vehicle?.description ||
+        transferLabel;
+
+    const flightDate = bookingData?.flight_date;
+    const flightTime = bookingData?.flight_time;
+    const pickupDateTime = flightDate
+      ? `${flightDate}${flightTime ? 'T' + flightTime : ''}`
+      : '';
+
     return {
-      type: 'flight',
-      origin: firstLeg?.DepartureCode || bookingData?.origin || 'N/A',
-      destination: lastLeg?.DestinationCode || bookingData?.destination || 'N/A',
-      originName: firstLeg?.DepartureName || '',
-      destinationName: lastLeg?.DestinationName || '',
-      flightNumber: firstLeg?.FlightNumber || bookingData?.flightNumber || 'N/A',
-      airline: outboundFlight?.AirlineName || outboundFlight?.Airline || bookingData?.airline || booking.provider,
-      departureDate: firstLeg?.StartTime || bookingData?.departureDate || booking.createdAt,
-      arrivalDate: lastLeg?.EndTime || '',
-      duration: outboundFlight?.TripDuration || '',
-      stops: outboundFlight?.Stops || 0,
-      cabinClass: firstLeg?.CabinClassName || bookingData?.cabinClass || 'Economy',
-      pnrNumber: providerData?.FlightBookingSummary?.PnrReferenceNumber || booking.pnrNumber,
-      passengers: flightCombination?.Adults || 1,
+      type: 'car',
+      origin: pickupLocation,
+      destination: dropoffLocation,
+      originName: pickupLocation,
+      destinationName: dropoffLocation,
+      pickupLocation,
+      dropoffLocation,
+      pickupDateTime,
+      dropoffDateTime: pickupDateTime,
+      vehicleType,
+      airline: bookingData?.airline_code || '',
+      flightNumber: bookingData?.flight_number || '',
+      departureDate: flightDate || booking.createdAt,
+      arrivalDate: '',
+      duration: '',
+      stops: 0,
+      cabinClass: '',
+      pnrNumber: booking.pnrNumber,
+      passengers: 1,
       price: booking.totalAmount,
       currency: booking.currency,
       status: booking.status,
       reference: booking.reference,
-      isWakanow: true
+      isWakanow: false,
+      hotelName: '',
+      checkInDate: '',
+      checkOutDate: '',
+      nights: 0,
+      guests: 0,
+      rooms: 0,
     };
   }
-  
+
+
+  if (booking.provider === 'WAKANOW') {
+    // Try 3 possible locations for the flight data
+    let flightModels: any[] = [];
+
+    // Location 1: providerData (confirmed bookings)
+    const providerSummary =
+      providerData?.FlightBookingSummary?.FlightSummaryModel ||
+      providerData?.FlightBookingResult?.FlightBookingSummaryModel;
+    if (providerSummary) {
+      const combo = providerSummary.FlightCombination || {};
+      const models = combo.FlightModels || providerSummary.FlightModels || [];
+      if (models.length > 0) flightModels = models;
+    }
+
+    // Location 2: bookingData.flightSummary (pending bookings) ✅ THE FIX
+    if (flightModels.length === 0 && bookingData?.flightSummary?.FlightModels?.length > 0) {
+      flightModels = bookingData.flightSummary.FlightModels;
+    }
+
+    // Location 3: nested fallback
+    if (flightModels.length === 0 && bookingData?.bookingData?.flightSummary?.FlightModels?.length > 0) {
+      flightModels = bookingData.bookingData.flightSummary.FlightModels;
+    }
+
+    // If we found flight data anywhere, show the route
+    if (flightModels.length > 0) {
+      const outboundFlight = flightModels[0] || {};
+      const flightLegs = outboundFlight?.FlightLegs || [];
+      const firstLeg = flightLegs[0] || {};
+      const lastLeg = flightLegs[flightLegs.length - 1] || firstLeg;
+
+      return {
+        type: 'flight',
+        origin: outboundFlight.DepartureCode || firstLeg.DepartureCode || 'N/A',
+        destination: outboundFlight.ArrivalCode || lastLeg.DestinationCode || 'N/A',
+        originName: firstLeg?.DepartureName || '',
+        destinationName: lastLeg?.DestinationName || '',
+        flightNumber: outboundFlight.Name || firstLeg.FlightNumber || 'N/A',
+        airline: outboundFlight.AirlineName || outboundFlight.Airline || firstLeg.AirlineName || 'Wakanow',
+        departureDate: outboundFlight.DepartureTime || firstLeg.StartTime || booking.createdAt,
+        arrivalDate: outboundFlight.ArrivalTime || lastLeg.EndTime || '',
+        duration: outboundFlight.TripDuration || '',
+        stops: outboundFlight.Stops ?? 0,
+        cabinClass: firstLeg.CabinClassName || outboundFlight.CabinClass || 'Economy',
+        pnrNumber: providerData?.FlightBookingSummary?.PnrReferenceNumber || bookingData?.pnrReferenceNumber || booking.pnrNumber || '',
+        passengers: 1,
+        price: booking.totalAmount,
+        currency: booking.currency,
+        status: booking.status,
+        reference: booking.reference,
+        isWakanow: true,
+        hotelName: '', checkInDate: '', checkOutDate: '', nights: 0, guests: 0, rooms: 0,
+        pickupLocation: '', dropoffLocation: '', vehicleType: '',
+      };
+    }
+
+    // If no flight data anywhere, show fallback
+    return {
+      type: 'flight',
+      origin: 'N/A',
+      destination: 'N/A',
+      originName: '',
+      destinationName: '',
+      flightNumber: 'N/A',
+      airline: 'Wakanow',
+      departureDate: booking.createdAt,
+      arrivalDate: '',
+      duration: '',
+      stops: 0,
+      cabinClass: 'Economy',
+      pnrNumber: booking.pnrNumber || '',
+      passengers: 1,
+      price: booking.totalAmount,
+      currency: booking.currency,
+      status: booking.status,
+      reference: booking.reference,
+      isWakanow: true,
+      hotelName: '', checkInDate: '', checkOutDate: '', nights: 0, guests: 0, rooms: 0,
+      pickupLocation: '', dropoffLocation: '', vehicleType: '',
+    };
+  }
   // For Duffel/other flights
   return {
     type: 'flight',
@@ -1750,10 +1875,13 @@ const renderBookingCard = (booking: Booking) => {
           </svg>
         </div>
         <div className="flex-1 text-center md:text-left min-w-0 max-w-full">
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
+        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
             <h4 className="text-lg font-black text-gray-900 truncate tracking-tight max-w-[200px] md:max-w-[300px]">
               {safeStr(details.hotelName || 'Hotel')}
             </h4>
+            <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap bg-yellow-100 text-yellow-700">
+              Hotel
+            </span>
             <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
               {displayStatus}
             </span>
@@ -1829,9 +1957,10 @@ const renderBookingCard = (booking: Booking) => {
   if (bookingType === 'flight') {
     const originStr = safeStr(details.origin);
     const destStr = safeStr(details.destination);
-    const routeText = details.origin && details.destination 
+    const hasRoute = originStr && destStr && originStr !== 'N/A' && destStr !== 'N/A';
+    const routeText = hasRoute
       ? `${originStr} → ${destStr}`
-      : safeStr(booking.reference);
+      : `${safeStr(details.airline) || booking.provider || 'Flight'} Booking`;
     
     const airlineStr = safeStr(details.airline);
     const flightNumStr = safeStr(details.flightNumber);
@@ -1906,11 +2035,13 @@ const renderBookingCard = (booking: Booking) => {
     );
   }
   
-  // ✅ CAR RENTAL BOOKING CARD - FIXED LAYOUT
-  const bookingData = booking.bookingData as any;
-  const vehicleType = safeStr(bookingData?.vehicleType || bookingData?.vehicle?.description || 'Car Rental');
-  const pickupLocation = safeStr(bookingData?.pickupLocationCode || bookingData?.pickupLocation || 'N/A');
-  const dropoffLocation = safeStr(bookingData?.dropoffLocationCode || bookingData?.dropoffLocation || 'N/A');
+  
+    // ✅ CAR RENTAL BOOKING CARD - FIXED LAYOUT
+    const vehicleType = safeStr(details.vehicleType || 'Car Rental');
+    const pickupLocation = safeStr(details.pickupLocation);
+    const dropoffLocation = safeStr(details.dropoffLocation);
+    const pickupDateTime = safeStr(details.pickupDateTime);
+    const flightNumForCar = safeStr(details.flightNumber);
   
   return (
     <div key={booking.id} className="bg-white rounded-[24px] p-6 border border-gray-100 flex flex-col md:flex-row items-center gap-6 group hover:shadow-md transition-shadow overflow-hidden">
@@ -1920,10 +2051,13 @@ const renderBookingCard = (booking: Booking) => {
         </svg>
       </div>
       <div className="flex-1 text-center md:text-left min-w-0 max-w-full">
-        <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
+      <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-1">
           <h4 className="text-lg font-black text-gray-900 truncate tracking-tight max-w-[200px] md:max-w-[300px]">
             {vehicleType}
           </h4>
+          <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap bg-purple-100 text-purple-700">
+            Car Rental
+          </span>
           <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
             {displayStatus}
           </span>
@@ -1932,20 +2066,40 @@ const renderBookingCard = (booking: Booking) => {
           Booking Reference: {safeStr(booking.reference)}
         </p>
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] font-black text-gray-400 uppercase tracking-tight">
-          <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Pickup: {pickupLocation}
-          </div>
-          <div className="flex items-center gap-1.5 whitespace-nowrap">
-            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Dropoff: {dropoffLocation}
-          </div>
+        {pickupLocation && pickupLocation !== 'N/A' && (
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Pickup: {pickupLocation}
+            </div>
+          )}
+          {dropoffLocation && dropoffLocation !== 'N/A' && (
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Dropoff: {dropoffLocation}
+            </div>
+          )}
+          {pickupDateTime && pickupDateTime !== 'N/A' && (
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {new Date(pickupDateTime).toLocaleDateString()}
+            </div>
+          )}
+          {flightNumForCar && flightNumForCar !== 'N/A' && (
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              Flight {flightNumForCar}
+            </div>
+          )}
         </div>
       </div>
       <div className="text-center md:text-right shrink-0">

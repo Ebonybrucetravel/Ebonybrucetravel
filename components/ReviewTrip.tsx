@@ -3184,17 +3184,76 @@ const tripNights = (() => {
       )}
     </div>
     <div className="flex-1">
-      <h3 className="font-semibold text-gray-900">
-        {(actualItem as any)?.isMultiCity ? 'Multi-City Flight' : actualItem.title}
-      </h3>
-      <p className="text-sm text-gray-500">
-        {(actualItem as any)?.isMultiCity && (actualItem as any)?.allSegments ? (
-          (actualItem as any).allSegments.map((s: any, i: number, arr: any[]) => 
-            `${s.from || s.Departure} → ${s.to || s.Destination}${i < arr.length - 1 ? ', ' : ''}`
-          )
-        ) : actualItem.subtitle}
-      </p>
-      <p className="text-xs text-gray-400 mt-1">{actualItem.provider}</p>
+
+    <h3 className="font-semibold text-gray-900">
+      {(actualItem as any)?.isMultiCity
+        ? 'Multi-City Flight'
+        : isHotel
+          ? (
+              (actualItem as any).hotelName ||
+              (actualItem as any).hotel?.title ||
+              (actualItem as any).hotel?.name ||
+              (actualItem as any).name ||
+              actualItem.title ||
+              'Hotel'
+            )
+          : actualItem.title}
+    </h3>
+
+    {/* ✅ Subtitle: for hotels show the address, otherwise route/subtitle */}
+    <p className="text-sm text-gray-500">
+      {(actualItem as any)?.isMultiCity && (actualItem as any)?.allSegments ? (
+        (actualItem as any).allSegments.map((s: any, i: number, arr: any[]) => 
+          `${s.from || s.Departure} → ${s.to || s.Destination}${i < arr.length - 1 ? ', ' : ''}`
+        )
+      ) : isHotel ? (
+        [
+          (actualItem as any).hotelAddress,
+          (actualItem as any).hotelCity,
+          (actualItem as any).hotelCountry,
+        ]
+          .filter(Boolean)
+          .join(', ') ||
+        (actualItem as any).hotel?.address ||
+        (actualItem as any).address ||
+        actualItem.subtitle ||
+        'Hotel booking'
+      ) : actualItem.subtitle}
+    </p>
+
+    {/* ✅ Check-in / Check-out dates for hotels */}
+{isHotel && (() => {
+  const ci = (actualItem as any).checkInDate || searchParams?.checkInDate;
+  const co = (actualItem as any).checkOutDate || searchParams?.checkOutDate;
+  if (!ci || !co) return null;
+
+  const fmt = (d: string) => {
+    try {
+      return new Date(d).toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return d;
+    }
+  };
+
+  return (
+    <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 flex-wrap">
+      <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+      <span>{fmt(ci)}</span>
+      <span className="text-gray-400">→</span>
+      <span>{fmt(co)}</span>
+      <span className="text-gray-400">·</span>
+      <span>{tripNights} night{tripNights > 1 ? 's' : ''}</span>
+    </p>
+  );
+})()}
+
     </div>
   </div>
 

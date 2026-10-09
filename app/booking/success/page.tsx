@@ -459,7 +459,7 @@ if (checkedBags.length > 0) {
             <p className="text-sm opacity-90">Powered by</p>
             <p className="font-bold text-xl">Duffel • Flight</p>
           </div>
-          <div className="text-3xl">✈️</div>
+          <i className="fa-solid fa-plane text-3xl" aria-hidden />
         </div>
       </div>
       
@@ -554,9 +554,7 @@ if (checkedBags.length > 0) {
         {/* Baggage info */}
         {baggageInfo && (
           <div className="mt-4 flex items-center gap-2 text-sm text-gray-600 border-t border-gray-100 pt-3">
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
-            </svg>
+            <i className="fa-solid fa-suitcase text-gray-400 text-sm" aria-hidden />
             <span>{baggageInfo}</span>
           </div>
         )}
@@ -631,13 +629,9 @@ if (checkedBags.length > 0) {
 <div className={`p-4 rounded-lg ${isRefundable ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
   <div className="flex items-start gap-2">
     {isRefundable ? (
-      <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
+      <i className="fa-solid fa-circle-check text-green-600 text-lg mt-0.5 flex-shrink-0" aria-hidden />
     ) : (
-      <svg className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-      </svg>
+      <i className="fa-solid fa-circle-xmark text-gray-500 text-lg mt-0.5 flex-shrink-0" aria-hidden />
     )}
     <div>
       <p className={`font-medium ${isRefundable ? 'text-green-800' : 'text-gray-700'}`}>
@@ -792,7 +786,7 @@ if (checkedBags.length > 0) {
               <p className="text-sm opacity-90">Powered by</p>
               <p className="font-bold text-xl">Amadeus Hotels</p>
             </div>
-            <div className="text-3xl">🏨</div>
+            <i className="fa-solid fa-hotel text-3xl" aria-hidden />
           </div>
         </div>
         
@@ -803,9 +797,12 @@ if (checkedBags.length > 0) {
             <p className="text-sm text-gray-600 mt-1">{fullAddress}</p>
           )}
           {hotelRating && (
-            <p className="text-sm text-gray-500 mt-1">
-              {'⭐'.repeat(Math.round(hotelRating))} {hotelRating}/5
-            </p>
+            <p className="text-sm text-gray-500 mt-1 inline-flex items-center gap-1">
+            {Array.from({ length: Math.round(hotelRating) }).map((_, i) => (
+              <i key={i} className="fa-solid fa-star text-yellow-500" aria-hidden />
+            ))}
+            <span className="ml-1">{hotelRating}/5</span>
+          </p>
           )}
           {hotelId && <p className="text-sm text-gray-400 mt-1">Hotel ID: {hotelId}</p>}
         </div>
@@ -888,7 +885,10 @@ if (checkedBags.length > 0) {
         {hotelPhone && (
           <div className="bg-gray-50 p-4 rounded-lg">
             <h4 className="font-semibold text-gray-900 mb-2">Contact</h4>
-            <p className="text-gray-700">📞 {hotelPhone}</p>
+            <p className="text-gray-700 inline-flex items-center gap-2">
+  <i className="fa-solid fa-phone" aria-hidden />
+  {hotelPhone}
+</p>
           </div>
         )}
         
@@ -896,9 +896,7 @@ if (checkedBags.length > 0) {
         {booking.cancellationPolicySnapshot && (
           <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
             <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            <i className="fa-solid fa-clock text-yellow-600 text-lg mt-0.5 flex-shrink-0" aria-hidden />
               <div>
                 <p className="font-medium text-yellow-800">Cancellation Policy</p>
                 <p className="text-sm text-yellow-700 mt-1">{booking.cancellationPolicySnapshot}</p>
@@ -917,402 +915,438 @@ if (checkedBags.length > 0) {
 
 
 
-// ==================== RENDER CAR RENTAL / TRANSFER DETAILS ====================
-const renderCarRentalDetails = () => {
-  if (!booking) return null;
+  const renderCarRentalDetails = () => {
+    if (!booking) return null;
+    
+    const isCarRental = booking?.productType === 'CAR_RENTAL';
+    if (!isCarRental) return null;
+    
+    const bookingData = booking.bookingData as any;
+    const offerData = bookingData?.offerData || {};
+    
+    // ✅ Detect transfer vs car rental (support BOTH nested offerData AND flat snake_case)
+    const hasNestedOffer =
+      offerData?.type === 'transfer-offer' ||
+      offerData?.start?.locationCode !== undefined ||
+      offerData?.end?.locationCode !== undefined;
+    
+    const hasFlatFields =
+      !!bookingData?.pickup_location ||
+      !!bookingData?.dropoff_location ||
+      !!bookingData?.transfer_type;
+    
+    const isTransferBooking = hasNestedOffer || hasFlatFields;
   
-  const isCarRental = booking?.productType === 'CAR_RENTAL';
-  if (!isCarRental) return null;
+    if (isTransferBooking) {
+      // ✅ Support BOTH nested offerData AND flat snake_case
+      const start = offerData?.start || {};
+      const end = offerData?.end || {};
+      const vehicle = offerData?.vehicle || {};
+      const serviceProvider = offerData?.serviceProvider || {};
+      const cancellationRules = offerData?.cancellationRules || [];
   
-  const bookingData = booking.bookingData as any;
-  const offerData = bookingData?.offerData || {};
+      const pickupLocation =
+        start?.locationCode ||
+        bookingData?.pickup_location ||
+        bookingData?.pickupLocation ||
+        'N/A';
   
-  const isTransferBooking = 
-    offerData?.type === 'transfer-offer' || 
-    offerData?.start?.locationCode !== undefined ||
-    offerData?.end?.locationCode !== undefined;
+      const dropoffLocation =
+        end?.locationCode ||
+        bookingData?.dropoff_location ||
+        bookingData?.dropoffLocation ||
+        'N/A';
   
-
-  if (isTransferBooking) {
-
-    const start = offerData?.start || {};
-    const end = offerData?.end || {};
-    const vehicle = offerData?.vehicle || {};
-    const serviceProvider = offerData?.serviceProvider || {};
-    const cancellationRules = offerData?.cancellationRules || [];
-    
-   
-    const vehicleDescription = vehicle?.description || vehicle?.name || vehicle?.type || 'Transfer Vehicle';
-    const vehicleCategory = vehicle?.category || vehicle?.vehicleCategory || 'ST';
-    const vehicleCode = vehicle?.code || vehicle?.vehicleCode || '';
-    const seats = vehicle?.seats?.[0]?.count || offerData?.seats || 'N/A';
-    const baggage = vehicle?.baggages?.[0]?.count || offerData?.baggage || 'N/A';
-    const vehicleImage = vehicle?.imageURL || vehicle?.image || '';
-    
-
-    const providerName = serviceProvider?.name || serviceProvider?.providerName || 'Transfer Provider';
-    const providerCode = serviceProvider?.code || serviceProvider?.providerCode || '';
-    const providerLogo = serviceProvider?.logoUrl || serviceProvider?.logo || '';
-    const termsUrl = serviceProvider?.termsUrl || serviceProvider?.terms || '';
-    
-   
-    const transferType = offerData?.transferType || offerData?.type || 'PRIVATE';
-    
-   
-    const pickupLocation = start?.locationCode || bookingData?.pickupLocation || 'N/A';
-    const pickupName = start?.name || start?.locationName || start?.description || '';
-    const pickupCity = start?.city || start?.cityName || '';
-    const pickupAddress = typeof start?.address === 'string' ? start.address : start?.address?.line || '';
-    const pickupDateTime = start?.dateTime || bookingData?.pickupDateTime || '';
-    
-
-    const dropoffLocation = end?.locationCode || bookingData?.dropoffLocation || 'N/A';
-    const dropoffName = end?.name || end?.locationName || end?.description || '';
-    const dropoffCity = end?.city || end?.cityName || '';
-    const dropoffAddress = typeof end?.address === 'string' ? end.address : end?.address?.line || '';
-    const dropoffDateTime = end?.dateTime || bookingData?.dropoffDateTime || '';
-    
-
-    const duration = offerData?.duration || '';
-    
-
-    const distance = offerData?.distance || {};
-    const distanceValue = distance?.value || '';
-    const distanceUnit = distance?.unit || 'MI';
-    
-
-    const passengers = bookingData?.passengers || [];
-    
-
-    const offerId = offerData?.offerId || bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
-    
-    const formatDateTime = (dateTime: string): string => {
-      if (!dateTime) return 'N/A';
-      try {
-        const date = new Date(dateTime);
-        return date.toLocaleString('en-GB', {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      } catch {
-        return dateTime;
-      }
-    };
-    
-    const getTransferTypeDisplay = (type: string): string => {
-      const map: Record<string, string> = {
-        'PRIVATE': 'Private Transfer',
-        'SHARED': 'Shared Transfer',
-        'TAXI': 'Taxi',
-        'HOURLY': 'Hourly Rental',
-        'AIRPORT': 'Airport Transfer',
-        'LUXURY': 'Luxury Transfer'
+      const flightDate = bookingData?.flight_date;
+      const flightTime = bookingData?.flight_time;
+      const flatPickupDateTime = flightDate
+        ? `${flightDate}T${flightTime || '00:00'}:00`
+        : '';
+  
+      const pickupDateTime =
+        start?.dateTime ||
+        bookingData?.pickupDateTime ||
+        flatPickupDateTime ||
+        'N/A';
+  
+      const dropoffDateTime =
+        end?.dateTime ||
+        bookingData?.dropoffDateTime ||
+        flatPickupDateTime ||
+        'N/A';
+  
+      const rawTransferType =
+        bookingData?.transfer_type ||
+        offerData?.transferType ||
+        'PRIVATE';
+  
+      const getTransferTypeDisplay = (type: string): string => {
+        const map: Record<string, string> = {
+          'PRIVATE': 'Private Transfer',
+          'SHARED': 'Shared Transfer',
+          'TAXI': 'Taxi',
+          'HOURLY': 'Hourly Rental',
+          'AIRPORT': 'Airport Transfer',
+          'LUXURY': 'Luxury Transfer',
+        };
+        return map[type] || type || 'Private Transfer';
       };
-      return map[type] || type || 'Private Transfer';
-    };
-    
-    const getCategoryDisplay = (category: string): string => {
-      const map: Record<string, string> = {
-        'ST': 'Standard',
-        'BU': 'Business',
-        'FC': 'First Class',
-        'PR': 'Premium',
-        'EL': 'Electric',
-        'SUV': 'SUV',
-        'VAN': 'Van',
-        'CAR': 'Car',
-        'LMS': 'Limousine',
-        'BUS': 'Bus',
-        'SDN': 'Sedan',
-        'ELC': 'Electric'
+  
+      const transferType = getTransferTypeDisplay(rawTransferType);
+  
+      const vehicleDescription =
+        vehicle?.description ||
+        bookingData?.vehicleType ||
+        bookingData?.vehicleDescription ||
+        'Transfer Vehicle';
+  
+      const vehicleCategory =
+        vehicle?.category ||
+        vehicle?.vehicleCategory ||
+        'ST';
+  
+      const vehicleCode =
+        vehicle?.code || vehicle?.vehicleCode || '';
+  
+      const seats = vehicle?.seats?.[0]?.count || bookingData?.seats || 'N/A';
+      const baggage = vehicle?.baggages?.[0]?.count || bookingData?.baggage || 'N/A';
+      const vehicleImage = vehicle?.imageURL || vehicle?.image || '';
+  
+      const providerName =
+        serviceProvider?.name ||
+        serviceProvider?.providerName ||
+        (bookingData?.amadeus_offer_id ? 'Amadeus' : 'Transfer Provider');
+  
+      const providerCode = serviceProvider?.code || serviceProvider?.providerCode || '';
+      const providerLogo = serviceProvider?.logoUrl || serviceProvider?.logo || '';
+      const termsUrl = serviceProvider?.termsUrl || serviceProvider?.terms || '';
+  
+      const flightNumber = bookingData?.flight_number || '';
+      const airlineCode = bookingData?.airline_code || '';
+  
+      const distance = offerData?.distance || {};
+      const distanceValue = distance?.value || '';
+      const distanceUnit = distance?.unit || 'MI';
+  
+      const passengers = bookingData?.passengers || [];
+  
+      const offerId =
+        offerData?.offerId ||
+        bookingData?.offerId ||
+        bookingData?.amadeus_offer_id ||
+        'N/A';
+  
+      const formatDateTime = (dateTime: string): string => {
+        if (!dateTime || dateTime === 'N/A') return 'N/A';
+        try {
+          const date = new Date(dateTime);
+          return date.toLocaleString('en-GB', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch {
+          return dateTime;
+        }
       };
-      return map[category] || category || 'Standard';
-    };
-    
-    const getAirportName = (code: string): string => {
-      const airports: Record<string, string> = {
-        'CDG': 'Paris Charles de Gaulle Airport',
-        'ORY': 'Paris Orly Airport',
-        'LHR': 'London Heathrow Airport',
-        'JFK': 'John F. Kennedy International Airport',
-        'LOS': 'Murtala Muhammed International Airport',
-        'ABV': 'Nnamdi Azikiwe International Airport',
-        'DXB': 'Dubai International Airport',
-        'IST': 'Istanbul Airport',
-        'FRA': 'Frankfurt Airport',
-        'AMS': 'Amsterdam Schiphol Airport',
-        'NCE': 'Nice Côte d\'Azur Airport',
+  
+      const getCategoryDisplay = (category: string): string => {
+        const map: Record<string, string> = {
+          'ST': 'Standard',
+          'BU': 'Business',
+          'FC': 'First Class',
+          'PR': 'Premium',
+          'EL': 'Electric',
+          'SUV': 'SUV',
+          'VAN': 'Van',
+          'CAR': 'Car',
+          'LMS': 'Limousine',
+          'BUS': 'Bus',
+          'SDN': 'Sedan',
+          'ELC': 'Electric',
+        };
+        return map[category] || category || 'Standard';
       };
-      return airports[code] || code;
-    };
-    
-    const pickupDisplayName = pickupName || pickupCity || pickupAddress || getAirportName(pickupLocation);
-    const dropoffDisplayName = dropoffName || dropoffCity || dropoffAddress || getAirportName(dropoffLocation);
-    
+  
+      const getAirportName = (code: string): string => {
+        const airports: Record<string, string> = {
+          'CDG': 'Paris Charles de Gaulle Airport',
+          'ORY': 'Paris Orly Airport',
+          'LHR': 'London Heathrow Airport',
+          'JFK': 'John F. Kennedy International Airport',
+          'LOS': 'Murtala Muhammed International Airport',
+          'ABV': 'Nnamdi Azikiwe International Airport',
+          'DXB': 'Dubai International Airport',
+          'IST': 'Istanbul Airport',
+          'FRA': 'Frankfurt Airport',
+          'AMS': 'Amsterdam Schiphol Airport',
+          'NCE': "Nice Côte d'Azur Airport",
+        };
+        return airports[code] || code;
+      };
+  
+      const pickupDisplayName = getAirportName(pickupLocation);
+      const dropoffDisplayName = getAirportName(dropoffLocation);
+  
+      return (
+        <div className="space-y-6">
+          {/* Provider Badge */}
+          <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm opacity-90">Powered by</p>
+                <p className="font-bold text-xl">🚐 Transfer Service</p>
+              </div>
+              <i className="fa-solid fa-van-shuttle text-3xl" aria-hidden />
+            </div>
+          </div>
+  
+          {/* Offer ID & Transfer Type */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Offer ID</p>
+                <p className="font-mono font-bold text-md text-emerald-600 break-all">{offerId}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Transfer Type</p>
+                <p className="font-medium">{transferType}</p>
+              </div>
+              {flightNumber && (
+                <div>
+                  <p className="text-sm text-gray-500">Flight Number</p>
+                  <p className="font-medium">
+                    {airlineCode ? `${airlineCode} ` : ''}{flightNumber}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+  
+          {/* Vehicle Details */}
+          {(vehicleDescription || vehicleImage) && (
+            <div className="border-b border-gray-200 pb-4">
+              <h4 className="font-semibold text-gray-900 mb-3 text-lg">Vehicle Details</h4>
+  
+              {vehicleImage && (
+                <div className="mb-4">
+                  <img
+                    src={vehicleImage}
+                    alt={vehicleDescription}
+                    className="w-full max-h-48 object-contain rounded-lg bg-gray-50"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+  
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500">Category</p>
+                  <p className="font-semibold text-gray-900">{getCategoryDisplay(vehicleCategory)}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500">Seats</p>
+                  <p className="font-semibold text-gray-900">{seats}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500">Baggage</p>
+                  <p className="font-semibold text-gray-900">{baggage}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-gray-500">Vehicle Code</p>
+                  <p className="font-mono font-semibold text-gray-900">{vehicleCode || 'N/A'}</p>
+                </div>
+              </div>
+  
+              <p className="text-gray-700 font-medium">{vehicleDescription}</p>
+            </div>
+          )}
+  
+          {/* Service Provider */}
+          <div className="border-b border-gray-200 pb-4">
+            <h4 className="font-semibold text-gray-900 mb-3 text-lg">Service Provider</h4>
+            <div className="flex items-center gap-4">
+              {providerLogo && (
+                <img
+                  src={providerLogo}
+                  alt={providerName}
+                  className="w-12 h-12 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              )}
+              <div>
+                <p className="font-semibold text-lg">{providerName}</p>
+                {providerCode && (
+                  <p className="text-sm text-gray-500">Code: {providerCode}</p>
+                )}
+                {termsUrl && (
+                  <a
+                    href={termsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-emerald-600 hover:underline"
+                  >
+                    View Terms & Conditions
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+  
+          {/* Pickup & Dropoff */}
+          <div className="border-b border-gray-200 pb-4">
+            <h4 className="font-semibold text-gray-900 mb-3 text-lg">Pickup & Dropoff</h4>
+  
+            <div className="bg-blue-50 p-4 rounded-lg mb-3">
+              <div className="flex items-start gap-2">
+              <i className="fa-solid fa-location-dot text-blue-600 text-lg mt-0.5 flex-shrink-0" aria-hidden />
+<i className="fa-solid fa-location-dot text-green-600 text-lg mt-0.5 flex-shrink-0" aria-hidden />
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Pickup</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                    <div>
+                      <p className="font-bold text-lg">{pickupLocation}</p>
+                      <p className="text-sm text-gray-600">{pickupDisplayName}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Date & Time</p>
+                      <p className="font-semibold">{formatDateTime(pickupDateTime)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+  
+            <div className="bg-green-50 p-4 rounded-lg">
+              <div className="flex items-start gap-2">
+              <i className="fa-solid fa-triangle-exclamation text-yellow-600 text-lg mt-0.5 flex-shrink-0" aria-hidden />
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-green-700 uppercase tracking-wider">Dropoff</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                    <div>
+                      <p className="font-bold text-lg">{dropoffLocation}</p>
+                      <p className="text-sm text-gray-600">{dropoffDisplayName}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Date & Time</p>
+                      <p className="font-semibold">{formatDateTime(dropoffDateTime)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+  
+          {/* Distance */}
+          {distanceValue && (
+            <div className="border-b border-gray-200 pb-4">
+              <h4 className="font-semibold text-gray-900 mb-3 text-lg">Distance</h4>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-lg font-medium">{distanceValue} {distanceUnit}</p>
+              </div>
+            </div>
+          )}
+  
+          {/* Cancellation Policy */}
+          {cancellationRules && cancellationRules.length > 0 && (
+            <div className="border-b border-gray-200 pb-4">
+              <h4 className="font-semibold text-gray-900 mb-3 text-lg">Cancellation Policy</h4>
+              <div className="space-y-2">
+                {cancellationRules.map((rule: any, index: number) => (
+                  <div
+                    key={index}
+                    className={`p-3 rounded-lg border ${
+                      rule.feeValue === '0' || rule.feeValue === '0%'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-yellow-50 border-yellow-200'
+                    }`}
+                  >
+                    <p className="text-sm text-gray-700">{rule.ruleDescription}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+  
+          {/* Passenger Info */}
+          {passengers && passengers.length > 0 && (
+            <div className="border-b border-gray-200 pb-4">
+              <h4 className="font-semibold text-gray-900 mb-3 text-lg">Passenger</h4>
+              <div className="space-y-2">
+                {passengers.map((passenger: any, index: number) => (
+                  <div key={index} className="bg-gray-50 p-3 rounded-lg flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {passenger.name?.firstName} {passenger.name?.lastName}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {passenger.name?.title || 'MR'} • {passenger.contact?.phone || 'N/A'}
+                      </p>
+                      {passenger.contact?.email && (
+                        <p className="text-xs text-gray-500">{passenger.contact.email}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Passenger {index + 1}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+  
+    // ✅ Fallback for non-transfer car rentals
+    const offerId = bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
+  
     return (
       <div className="space-y-6">
-        {/* Provider Badge */}
-        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4 rounded-lg">
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-4 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-90">Powered by</p>
-              <p className="font-bold text-xl">🚐 Transfer Service</p>
+              <p className="font-bold text-xl">Amadeus • Car Rental</p>
             </div>
-            <div className="text-3xl">🚐</div>
+            <i className="fa-solid fa-car text-3xl" aria-hidden />
           </div>
         </div>
-        
-        {/* Offer ID & Transfer Type */}
+  
         <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-500">Offer ID</p>
               <p className="font-mono font-bold text-md text-emerald-600 break-all">{offerId}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Transfer Type</p>
-              <p className="font-medium">{getTransferTypeDisplay(transferType)}</p>
+              <p className="text-sm text-gray-500">Booking Reference</p>
+              <p className="font-mono font-bold text-md">{booking.reference}</p>
             </div>
+          </div>
+        </div>
+  
+        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+          <div className="flex items-start gap-2">
+          <i className="fa-solid fa-triangle-exclamation text-yellow-600 text-lg mt-0.5 mr-2 flex-shrink-0" aria-hidden />
             <div>
-              <p className="text-sm text-gray-500">Duration</p>
-              <p className="font-medium">{duration || 'N/A'}</p>
+              <p className="font-medium text-yellow-800">Transfer details are being loaded</p>
+              <p className="text-sm text-yellow-700">Please refresh the page or contact support if this issue persists.</p>
             </div>
           </div>
         </div>
-        
-        {/* Vehicle Details */}
-        <div className="border-b border-gray-200 pb-4">
-          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Vehicle Details</h4>
-          
-          {vehicleImage && (
-            <div className="mb-4">
-              <img 
-                src={vehicleImage} 
-                alt={vehicleDescription} 
-                className="w-full max-h-48 object-contain rounded-lg bg-gray-50"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-          )}
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Category</p>
-              <p className="font-semibold text-gray-900">{getCategoryDisplay(vehicleCategory)}</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Seats</p>
-              <p className="font-semibold text-gray-900">{seats}</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Baggage</p>
-              <p className="font-semibold text-gray-900">{baggage}</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Vehicle Code</p>
-              <p className="font-mono font-semibold text-gray-900">{vehicleCode || 'N/A'}</p>
-            </div>
-          </div>
-          
-          <p className="text-gray-700 font-medium">{vehicleDescription}</p>
-        </div>
-        
-        {/* Service Provider */}
-        <div className="border-b border-gray-200 pb-4">
-          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Service Provider</h4>
-          <div className="flex items-center gap-4">
-            {providerLogo && (
-              <img 
-                src={providerLogo} 
-                alt={providerName} 
-                className="w-12 h-12 object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            )}
-            <div>
-              <p className="font-semibold text-lg">{providerName}</p>
-              {providerCode && (
-                <p className="text-sm text-gray-500">Code: {providerCode}</p>
-              )}
-              {termsUrl && (
-                <a 
-                  href={termsUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-emerald-600 hover:underline"
-                >
-                  View Terms & Conditions
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Pickup & Dropoff */}
-        <div className="border-b border-gray-200 pb-4">
-          <h4 className="font-semibold text-gray-900 mb-3 text-lg">Pickup & Dropoff</h4>
-          
-          <div className="bg-blue-50 p-4 rounded-lg mb-3">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <div className="flex-1">
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Pickup</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
-                  <div>
-                    <p className="font-bold text-lg">{pickupLocation}</p>
-                    <p className="text-sm text-gray-600">{pickupDisplayName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Date & Time</p>
-                    <p className="font-semibold">{formatDateTime(pickupDateTime)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-green-50 p-4 rounded-lg">
-            <div className="flex items-start gap-2">
-              <svg className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <div className="flex-1">
-                <p className="text-xs font-bold text-green-700 uppercase tracking-wider">Dropoff</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
-                  <div>
-                    <p className="font-bold text-lg">{dropoffLocation}</p>
-                    <p className="text-sm text-gray-600">{dropoffDisplayName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Date & Time</p>
-                    <p className="font-semibold">{formatDateTime(dropoffDateTime)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Distance */}
-        {distanceValue && (
-          <div className="border-b border-gray-200 pb-4">
-            <h4 className="font-semibold text-gray-900 mb-3 text-lg">Distance</h4>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-lg font-medium">
-                {distanceValue} {distanceUnit}
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {/* Cancellation Policy */}
-        {cancellationRules && cancellationRules.length > 0 && (
-          <div className="border-b border-gray-200 pb-4">
-            <h4 className="font-semibold text-gray-900 mb-3 text-lg">Cancellation Policy</h4>
-            <div className="space-y-2">
-              {cancellationRules.map((rule: any, index: number) => (
-                <div key={index} className={`p-3 rounded-lg border ${rule.feeValue === '0' || rule.feeValue === '0%' ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                  <p className="text-sm text-gray-700">{rule.ruleDescription}</p>
-                  {rule.feeValue !== undefined && (
-                    <p className="text-xs mt-1">
-                      {rule.feeValue === '0' || rule.feeValue === '0%' ? (
-                        <span className="text-green-600 font-medium">✓ Free cancellation</span>
-                      ) : (
-                        <span className="text-yellow-700">
-                          Fee: {rule.feeValue}% {rule.feeType || ''}
-                          {rule.metricMin && rule.metricMax && ` (${rule.metricMin} - ${rule.metricMax} ${rule.metricType})`}
-                          {rule.metricMin && !rule.metricMax && ` (${rule.metricMin}+ ${rule.metricType})`}
-                        </span>
-                      )}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {/* Passenger Info */}
-        {passengers && passengers.length > 0 && (
-          <div className="border-b border-gray-200 pb-4">
-            <h4 className="font-semibold text-gray-900 mb-3 text-lg">Passengers</h4>
-            <div className="space-y-2">
-              {passengers.map((passenger: any, index: number) => (
-                <div key={index} className="bg-gray-50 p-3 rounded-lg flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">
-                      {passenger.name?.firstName} {passenger.name?.lastName}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {passenger.name?.title || 'MR'} • {passenger.contact?.phone || 'N/A'}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">Passenger {index + 1}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
-  }
-  
-  // ✅ Fallback for non-transfer car rentals
-  const offerId = bookingData?.offerId || bookingData?.amadeus_offer_id || 'N/A';
-  
-  return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-4 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm opacity-90">Powered by</p>
-            <p className="font-bold text-xl">Amadeus • Car Rental</p>
-          </div>
-          <div className="text-3xl">🚗</div>
-        </div>
-      </div>
-      
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm text-gray-500">Offer ID</p>
-            <p className="font-mono font-bold text-md text-emerald-600 break-all">{offerId}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">Booking Reference</p>
-            <p className="font-mono font-bold text-md">{booking.reference}</p>
-          </div>
-        </div>
-      </div>
-      
-      <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-        <div className="flex items-start gap-2">
-          <svg className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <div>
-            <p className="font-medium text-yellow-800">Transfer details are being loaded</p>
-            <p className="text-sm text-yellow-700">Please refresh the page or contact support if this issue persists.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+  };
+
+
 const renderWakanowDetails = () => {
   if (!booking) return null;
   
@@ -2014,9 +2048,10 @@ const renderWakanowDetails = () => {
               {/* Non-stop badge */}
               {stopsList.length === 0 && (
                 <div className="mb-3 flex justify-center">
-                  <span className="text-xs font-medium text-green-600 bg-green-50 px-4 py-1.5 rounded-full">
-                    ✈️ Non-stop flight
-                  </span>
+                  <span className="text-xs font-medium text-green-600 bg-green-50 px-4 py-1.5 rounded-full inline-flex items-center gap-1.5">
+  <i className="fa-solid fa-plane" aria-hidden />
+  Non-stop flight
+</span>
                 </div>
               )}
               
@@ -2146,11 +2181,12 @@ const renderWakanowDetails = () => {
       {isTicketIssued && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-start">
-            <svg className="w-5 h-5 text-green-600 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <i className="fa-solid fa-circle-check text-green-600 text-lg mt-0.5 mr-2 flex-shrink-0" aria-hidden />
             <div>
-              <p className="font-medium text-green-800">Ticket Issued ✓</p>
+            <p className="font-medium text-green-800 inline-flex items-center gap-1.5">
+  <i className="fa-solid fa-circle-check" aria-hidden />
+  Ticket Issued
+</p>
               <p className="text-sm text-green-700">Your ticket has been successfully issued.</p>
               <p className="text-xs text-green-600 mt-1">PNR: {pnrNumber}</p>
             </div>
@@ -2196,9 +2232,7 @@ const renderWakanowDetails = () => {
         <div className="bg-white rounded-xl shadow p-8 border border-gray-100">
           <div className="text-center mb-6">
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
+              <i className="fa-solid fa-envelope text-blue-600 text-3xl" aria-hidden />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Enter Your Email</h1>
             <p className="text-gray-600">
@@ -2311,9 +2345,7 @@ const renderWakanowDetails = () => {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+              <i className="fa-solid fa-gift text-blue-600 text-xl" aria-hidden />
               </div>
               <div>
                 <p className="font-semibold text-gray-900">Enjoying your booking experience?</p>
@@ -2353,9 +2385,7 @@ const renderWakanowDetails = () => {
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
+            <i className="fa-solid fa-circle-check text-green-500 text-lg" aria-hidden />
             </div>
             <div className="ml-3 flex-1">
               <p className="text-sm text-green-800">
@@ -2371,10 +2401,8 @@ const renderWakanowDetails = () => {
         {isConfirmed && (
           <>
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
+  <i className="fa-solid fa-circle-check text-green-600 text-4xl" aria-hidden />
+</div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Confirmed!</h1>
             <p className="text-gray-600">Your booking has been successfully confirmed.</p>
           </>
@@ -2383,9 +2411,7 @@ const renderWakanowDetails = () => {
         {isPending && (
           <>
             <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            <i className="fa-solid fa-clock text-yellow-600 text-4xl" aria-hidden />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Processing</h1>
             <p className="text-gray-600">Your payment was successful, but we're still waiting for confirmation from the provider.</p>
@@ -2395,9 +2421,7 @@ const renderWakanowDetails = () => {
         {isFailed && (
           <>
             <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            <i className="fa-solid fa-circle-exclamation text-red-600 text-4xl" aria-hidden />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Failed</h1>
             <p className="text-gray-600 mb-4">We couldn't confirm your booking with the provider.</p>

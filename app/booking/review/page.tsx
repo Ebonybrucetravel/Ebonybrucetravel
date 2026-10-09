@@ -962,7 +962,13 @@ export default function BookingReviewPage() {
             
             // ✅ CRITICAL: Preserve dates from the parsed data
             parsed.checkInDate = parsed.checkInDate || parsed.checkIn || searchParams?.checkInDate;
-            parsed.checkOutDate = parsed.checkOutDate || parsed.checkOut || searchParams?.checkOutDate;
+            parsed.hotelName =
+            parsed.hotelName ||
+            parsed.hotel?.title ||
+            parsed.hotel?.name ||
+            parsed.name ||
+            parsed.title ||
+            'Hotel';
             
             console.log('💰 Setting hotel price from sessionStorage:', {
               totalAmount: parsed.totalAmount,
@@ -1250,24 +1256,32 @@ useEffect(() => {
         type: baseItem.type,
       });
       
-      // ✅ CRITICAL: Preserve ALL fields and explicitly set type
-      const result = {
-        ...baseItem,  // Preserve all fields
-        totalAmount: totalAmount,
-        final_amount: totalAmount.toString(),
-        final_price: totalAmount.toString(),
-        price: `${currency} ${totalAmount.toFixed(2)}`,
-        displayPrice: `${currency} ${totalAmount.toFixed(2)}`,
-        totalPrice: `${currency} ${totalAmount.toFixed(2)}`,
-        currency: currency,
-        selectedRoomData: baseItem.selectedRoomData,
-        selectedRoomType: roomTypeName,
-        roomTypeName: roomTypeName,
-        // ✅ EXPLICITLY set type to 'hotels' so ReviewTrip knows it's a hotel
-        type: 'hotels',
-        // ✅ Also ensure provider is set
-        provider: baseItem.provider || 'Premium Hotels',
-      };
+     // ✅ Resolve the hotel name from every possible location
+const resolvedHotelName =
+(baseItem as any).hotelName ||
+(baseItem as any).hotel?.title ||
+(baseItem as any).hotel?.name ||
+(baseItem as any).name ||
+baseItem.title ||
+'Hotel';
+
+const result = {
+...baseItem,
+title: resolvedHotelName,                        
+hotelName: resolvedHotelName,                     
+totalAmount: totalAmount,
+final_amount: totalAmount.toString(),
+final_price: totalAmount.toString(),
+price: `${currency} ${totalAmount.toFixed(2)}`,
+displayPrice: `${currency} ${totalAmount.toFixed(2)}`,
+totalPrice: `${currency} ${totalAmount.toFixed(2)}`,
+currency: currency,
+selectedRoomData: baseItem.selectedRoomData,
+selectedRoomType: roomTypeName,
+roomTypeName: roomTypeName,
+type: 'hotels',
+provider: baseItem.provider || 'Premium Hotels',
+};
       
       console.log('📤 Returning hotel result:', {
         id: result.id,
@@ -1598,6 +1612,15 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
         }
     
         const primaryOfferId = roomEntries[0].offerId;
+
+        console.log('🔍🔍🔍 DEBUG multi-room item BEFORE build:', {
+          extendedItem_hotelName: (extendedItem as any).hotelName,
+          extendedItem_hotel_title: (extendedItem as any).hotel?.title,
+          extendedItem_hotel_name: (extendedItem as any).hotel?.name,
+          extendedItem_name: (extendedItem as any).name,
+          extendedItem_title: (extendedItem as any).title,
+          extendedItem_keys: Object.keys(extendedItem || {}),
+        });
     
         const multiRoomItem = {
           ...extendedItem,
@@ -1613,8 +1636,64 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
             currency.code ||
             'NGN',
           hotelId: (extendedItem as any).hotelId || (extendedItem as any).id,
-          hotelName: (extendedItem as any).hotelName || (extendedItem as any).title,
-
+          hotelName:
+  (extendedItem as any).hotelName ||
+  (extendedItem as any).hotel?.title ||
+  (extendedItem as any).hotel?.name ||
+  (extendedItem as any).name ||
+  (extendedItem as any).title ||
+  'Hotel',
+          hotelAddress:
+    (extendedItem as any).hotelAddress ||
+    (extendedItem as any).address ||
+    (extendedItem as any).hotel?.address ||
+    '',
+  hotelCity:
+    (extendedItem as any).hotelCity ||
+    (extendedItem as any).cityCode ||
+    (extendedItem as any).city ||
+    (extendedItem as any).hotel?.cityCode ||
+    '',
+  hotelCountry:
+    (extendedItem as any).hotelCountry ||
+    (extendedItem as any).countryCode ||
+    (extendedItem as any).country ||
+    (extendedItem as any).hotel?.countryCode ||
+    '',
+  hotelRating:
+    (extendedItem as any).hotelRating ??
+    (extendedItem as any).rating ??
+    (extendedItem as any).hotel?.rating ??
+    null,
+  hotelDescription:
+    (extendedItem as any).hotelDescription ||
+    (extendedItem as any).description ||
+    (extendedItem as any).hotel?.description ||
+    '',
+  hotelPhone:
+    (extendedItem as any).hotelPhone ||
+    (extendedItem as any).phone ||
+    (extendedItem as any).hotel?.phone ||
+    '',
+  hotelAmenities:
+    (extendedItem as any).hotelAmenities ||
+    (extendedItem as any).amenities ||
+    (extendedItem as any).hotel?.amenities ||
+    [],
+  hotelImages:
+    (extendedItem as any).hotelImages ||
+    (extendedItem as any).images ||
+    (extendedItem as any).hotel?.images ||
+    [],
+  roomType:
+    (extendedItem as any).roomType ||
+    (extendedItem as any).selectedRoomType ||
+    (extendedItem as any).selectedRoomData?.name ||
+    (extendedItem as any).roomTypeName ||
+    'Standard Room',
+  boardType:
+    (extendedItem as any).boardType ||
+    'Room Only',
        
           numberOfRooms:
             (extendedItem as any).totalRooms ||
@@ -1753,6 +1832,68 @@ console.log('✈️ Flight details preserved in cleanedPassengerInfo:', {
           offerId: finalOfferId,
           offer_id: finalOfferId,
         },
+      
+        hotelName:
+        (finalHotelItem as any).hotelName ||
+        (finalHotelItem as any).hotel?.title ||
+        (finalHotelItem as any).hotel?.name ||
+        (finalHotelItem as any).name ||
+        (finalHotelItem as any).title ||
+        'Hotel',
+        hotelAddress:
+          (finalHotelItem as any).hotelAddress ||
+          (finalHotelItem as any).address ||
+          (finalHotelItem as any).hotel?.address ||
+          '',
+        hotelCity:
+          (finalHotelItem as any).hotelCity ||
+          (finalHotelItem as any).cityCode ||
+          (finalHotelItem as any).city ||
+          (finalHotelItem as any).hotel?.cityCode ||
+          '',
+        hotelCountry:
+          (finalHotelItem as any).hotelCountry ||
+          (finalHotelItem as any).countryCode ||
+          (finalHotelItem as any).country ||
+          (finalHotelItem as any).hotel?.countryCode ||
+          '',
+        hotelRating:
+          (finalHotelItem as any).hotelRating ??
+          (finalHotelItem as any).rating ??
+          (finalHotelItem as any).hotel?.rating ??
+          null,
+        hotelDescription:
+          (finalHotelItem as any).hotelDescription ||
+          (finalHotelItem as any).description ||
+          (finalHotelItem as any).hotel?.description ||
+          '',
+        hotelPhone:
+          (finalHotelItem as any).hotelPhone ||
+          (finalHotelItem as any).phone ||
+          (finalHotelItem as any).hotel?.phone ||
+          '',
+        hotelAmenities:
+          (finalHotelItem as any).hotelAmenities ||
+          (finalHotelItem as any).amenities ||
+          (finalHotelItem as any).hotel?.amenities ||
+          [],
+        hotelImages:
+          (finalHotelItem as any).hotelImages ||
+          (finalHotelItem as any).images ||
+          (finalHotelItem as any).hotel?.images ||
+          [],
+        roomType:
+          (finalHotelItem as any).roomType ||
+          (finalHotelItem as any).selectedRoomType ||
+          (finalHotelItem as any).selectedRoomData?.name ||
+          (finalHotelItem as any).roomTypeName ||
+          'Standard Room',
+        numberOfRooms:
+          (finalHotelItem as any).numberOfRooms ||
+          (typeof (finalHotelItem as any).rooms === 'number' ? (finalHotelItem as any).rooms : 1),
+        boardType:
+          (finalHotelItem as any).boardType ||
+          'Room Only',
       };
     
       console.log('✅ Proceeding with single-room hotel booking, offer ID:', finalOfferId);
