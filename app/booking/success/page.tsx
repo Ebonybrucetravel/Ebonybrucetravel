@@ -457,7 +457,7 @@ if (checkedBags.length > 0) {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm opacity-90">Powered by</p>
-            <p className="font-bold text-xl">Duffel • Flight</p>
+            <p className="font-bold text-xl">Ebony Bruce Travels</p>
           </div>
           <i className="fa-solid fa-plane text-3xl" aria-hidden />
         </div>
@@ -784,7 +784,7 @@ if (checkedBags.length > 0) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-90">Powered by</p>
-              <p className="font-bold text-xl">Amadeus Hotels</p>
+              <p className="font-bold text-xl">Ebony Bruce Travels</p>
             </div>
             <i className="fa-solid fa-hotel text-3xl" aria-hidden />
           </div>
@@ -938,12 +938,32 @@ if (checkedBags.length > 0) {
     const isTransferBooking = hasNestedOffer || hasFlatFields;
   
     if (isTransferBooking) {
-      // ✅ Support BOTH nested offerData AND flat snake_case
-      const start = offerData?.start || {};
-      const end = offerData?.end || {};
-      const vehicle = offerData?.vehicle || {};
-      const serviceProvider = offerData?.serviceProvider || {};
-      const cancellationRules = offerData?.cancellationRules || [];
+      // ✅ Support BOTH nested offerData AND top-level flat fields
+const start =
+offerData?.start ||
+bookingData?.start ||
+{};
+
+const end =
+offerData?.end ||
+bookingData?.end ||
+{};
+
+const vehicle =
+offerData?.vehicle ||
+bookingData?.vehicle ||
+{};
+
+const serviceProvider =
+offerData?.serviceProvider ||
+bookingData?.serviceProvider ||
+bookingData?.partnerInfo?.serviceProvider ||
+{};
+
+const cancellationRules =
+offerData?.cancellationRules ||
+bookingData?.cancellationRules ||
+[];
   
       const pickupLocation =
         start?.locationCode ||
@@ -995,22 +1015,44 @@ if (checkedBags.length > 0) {
       const transferType = getTransferTypeDisplay(rawTransferType);
   
       const vehicleDescription =
-        vehicle?.description ||
-        bookingData?.vehicleType ||
-        bookingData?.vehicleDescription ||
-        'Transfer Vehicle';
-  
-      const vehicleCategory =
-        vehicle?.category ||
-        vehicle?.vehicleCategory ||
-        'ST';
-  
-      const vehicleCode =
-        vehicle?.code || vehicle?.vehicleCode || '';
-  
-      const seats = vehicle?.seats?.[0]?.count || bookingData?.seats || 'N/A';
-      const baggage = vehicle?.baggages?.[0]?.count || bookingData?.baggage || 'N/A';
-      const vehicleImage = vehicle?.imageURL || vehicle?.image || '';
+      vehicle?.description ||
+      bookingData?.vehicleType ||
+      bookingData?.vehicleDescription ||
+      'Transfer Vehicle';
+    
+    const vehicleCategory =
+      vehicle?.category ||
+      vehicle?.vehicleCategory ||
+      bookingData?.vehicleCategory ||
+      'ST';
+    
+    const vehicleCode =
+      vehicle?.code ||
+      vehicle?.vehicleCode ||
+      bookingData?.vehicleCode ||
+      '';
+    
+    // ✅ Seats — check array shape, single object, and flat number
+    const seats =
+      vehicle?.seats?.[0]?.count ??
+      (typeof vehicle?.seats === 'number' ? vehicle.seats : undefined) ??
+      (typeof vehicle?.seats === 'object' && vehicle?.seats !== null && 'count' in (vehicle.seats as any) ? (vehicle.seats as any).count : undefined) ??
+      bookingData?.seats ??
+      'N/A';
+    
+    // ✅ Baggage — same for baggages
+    const baggage =
+      vehicle?.baggages?.[0]?.count ??
+      (typeof vehicle?.baggages === 'number' ? vehicle.baggages : undefined) ??
+      bookingData?.baggage ??
+      bookingData?.baggages?.[0]?.count ??
+      'N/A';
+    
+    const vehicleImage =
+      vehicle?.imageURL ||
+      vehicle?.image ||
+      bookingData?.vehicleImage ||
+      '';
   
       const providerName =
         serviceProvider?.name ||
@@ -1098,7 +1140,10 @@ if (checkedBags.length > 0) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-90">Powered by</p>
-                <p className="font-bold text-xl">🚐 Transfer Service</p>
+                <p className="font-bold text-xl inline-flex items-center gap-2">
+  <i className="fa-solid fa-van-shuttle" aria-hidden />
+  Ebony Bruce Travels
+</p>
               </div>
               <i className="fa-solid fa-van-shuttle text-3xl" aria-hidden />
             </div>
@@ -1314,7 +1359,7 @@ if (checkedBags.length > 0) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-90">Powered by</p>
-              <p className="font-bold text-xl">Amadeus • Car Rental</p>
+              <p className="font-bold text-xl">Ebony Bruce Travels</p>
             </div>
             <i className="fa-solid fa-car text-3xl" aria-hidden />
           </div>
@@ -1824,10 +1869,10 @@ const renderWakanowDetails = () => {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <p className="text-sm opacity-90">Powered by</p>
-            <p className="font-bold text-xl">Wakanow {isDomestic ? '• Domestic' : ''}</p>
+            <p className="font-bold text-xl">Ebony Bruce Travels {isDomestic ? '• Domestic' : ''}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs opacity-80">Wakanow Booking ID</p>
+            <p className="text-xs opacity-80">Flight Booking ID</p>
             <p className="font-mono font-bold text-sm">{wakanowBookingId}</p>
             <p className="text-xs opacity-80 mt-1">Reference</p>
             <p className="font-mono font-bold text-sm">{bookingReference}</p>
@@ -2433,11 +2478,12 @@ const renderWakanowDetails = () => {
       <div className="bg-white rounded-xl shadow p-6 mb-8 border border-gray-100">
         <div className="text-center mb-4">
           <div className="inline-block bg-blue-50 px-4 py-2 rounded-full mb-4">
-            <span className="text-sm font-medium text-blue-700">
-              {isDuffel ? 'DUFFEL FLIGHT' : 
-               isWakanow ? 'WAKANOW FLIGHT' : 
-               (productType?.replace(/_/g, ' ') || 'Booking')}
-            </span>
+          <span className="text-sm font-medium text-blue-700">
+  {isDuffel ? 'DUFFEL FLIGHT' : 
+   isWakanow ? 'WAKANOW FLIGHT' : 
+   productType === 'CAR_RENTAL' ? 'CAR TRANSFERS' :
+   (productType?.replace(/_/g, ' ') || 'Booking')}
+</span>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Booking Reference: {booking.reference}</h2>
         </div>

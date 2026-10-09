@@ -2389,9 +2389,7 @@ const tripNights = (() => {
     <div className="bg-[#f8fbfe] min-h-screen py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <button onClick={onBack} className="mb-8 flex items-center gap-2 text-xs font-medium text-gray-500 hover:text-[#33a8da] transition">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path d="M15 19l-7-7 7-7" />
-          </svg>
+        <i className="fa-solid fa-coins text-sm" aria-hidden />
           Back to Selection
         </button>
   
@@ -2401,9 +2399,7 @@ const tripNights = (() => {
   
         <div className="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-lg">
           <p className="text-xs text-blue-700 flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+          <i className="fa-solid fa-chevron-left text-sm" aria-hidden />
             Prices displayed in {currency.code} ({currency.symbol}) using live exchange rates
           </p>
         </div>
@@ -2429,18 +2425,14 @@ const tripNights = (() => {
                   className={`p-4 rounded-xl border ${severityColors[msg.SeverityLevel as keyof typeof severityColors] || severityColors.Medium}`}
                 >
                   <div className="flex items-start gap-3">
-                    <svg 
-                      className={`w-5 h-5 flex-shrink-0 mt-0.5 ${iconColors[msg.SeverityLevel as keyof typeof iconColors] || iconColors.Medium}`} 
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
-                    >
-                      {msg.SeverityLevel === 'High' ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      )}
-                    </svg>
+                  <i
+  className={`fa-solid ${
+    msg.SeverityLevel === 'High' ? 'fa-triangle-exclamation' : 'fa-circle-info'
+  } text-base flex-shrink-0 mt-0.5 ${
+    iconColors[msg.SeverityLevel as keyof typeof iconColors] || iconColors.Medium
+  }`}
+  aria-hidden
+/>
                     <div className="flex-1">
                       <p className={`font-semibold text-sm ${
                         msg.SeverityLevel === 'High' ? 'text-red-800' : 
@@ -2464,9 +2456,7 @@ const tripNights = (() => {
         {isPassportMandatory && !extBooking && !shouldSkipPassport && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            <i className="fa-solid fa-circle-info text-blue-600 text-lg mt-0.5 flex-shrink-0" aria-hidden />
               <div>
                 <p className="font-semibold text-blue-800">Important Travel Requirement</p>
                 <p className="text-sm text-blue-700">
@@ -2480,9 +2470,7 @@ const tripNights = (() => {
   
         {passportRequired && isLoggedIn && isPassportIncomplete && !extBooking && !requiresPassport && !shouldSkipPassport && (
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-            <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
+           <i className="fa-solid fa-triangle-exclamation text-amber-500 text-lg flex-shrink-0 mt-0.5" aria-hidden />
             <div className="flex-1">
               <p className="text-sm font-semibold text-amber-800">Passport details required</p>
               <p className="text-xs text-amber-700 mt-1">
@@ -2495,9 +2483,7 @@ const tripNights = (() => {
                 }}
                 className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg transition-colors"
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
+                <i className="fa-solid fa-user" aria-hidden />
                 Complete Travel Profile
               </button>
             </div>
@@ -3175,13 +3161,13 @@ const tripNights = (() => {
   <h2 className="text-lg font-semibold text-gray-900 mb-4">Trip summary</h2>
   <div className="flex items-start gap-4">
     <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
-      {isHotel ? (
-        <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5" /></svg>
-      ) : isFlight ? (
-        <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-      ) : (
-        <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" /></svg>
-      )}
+    {isHotel ? (
+  <i className="fa-solid fa-hotel text-orange-600 text-2xl" aria-hidden />
+) : isFlight ? (
+  <i className="fa-solid fa-plane text-blue-600 text-2xl" aria-hidden />
+) : (
+  <i className="fa-solid fa-car text-emerald-600 text-2xl" aria-hidden />
+)}
     </div>
     <div className="flex-1">
 
@@ -3242,9 +3228,7 @@ const tripNights = (() => {
 
   return (
     <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 flex-wrap">
-      <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
+      <i className="fa-solid fa-calendar-days text-gray-400 text-xs shrink-0" aria-hidden />
       <span>{fmt(ci)}</span>
       <span className="text-gray-400">→</span>
       <span>{fmt(co)}</span>
@@ -3264,10 +3248,7 @@ const tripNights = (() => {
     (actualItem as any).rooms.length > 0 && (
       <div className="mt-4 pt-4 border-t border-gray-100">
         <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10l9-7 9 7v10a2 2 0 01-2 2H5a2 2 0 01-2-2V10z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 22V12h6v10" />
-          </svg>
+        <i className="fa-solid fa-hotel text-[#33a8da]" aria-hidden />
           {(actualItem as any).totalRooms ||
             (actualItem as any).rooms.reduce(
               (sum: number, r: any) => sum + (r?.quantity || 1),
@@ -3322,15 +3303,19 @@ const tripNights = (() => {
                     {qty} × {rate?.name || rate?.type || 'Room'}
                   </p>
                   {bedDisplay && (
-                    <p className="text-xs text-gray-500 mt-0.5">🛏 {bedDisplay}</p>
+                   <p className="text-xs text-gray-500 mt-0.5 inline-flex items-center gap-1">
+                   <i className="fa-solid fa-bed" aria-hidden /> {bedDisplay}
+                 </p>
                   )}
                   {boardLabel && (
-                    <p className="text-xs text-gray-500 mt-0.5">🍽 {boardLabel}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 inline-flex items-center gap-1">
+                    <i className="fa-solid fa-utensils" aria-hidden /> {boardLabel}
+                  </p>
                   )}
                   {rate?.cancellationDeadline && (
-                    <p className="text-xs text-green-600 mt-0.5">
-                      ✓ Free cancellation
-                    </p>
+                    <p className="text-xs text-green-600 mt-0.5 inline-flex items-center gap-1">
+                    <i className="fa-solid fa-circle-check" aria-hidden /> Free cancellation
+                  </p>
                   )}
                 </div>
                 <p className="text-sm font-bold text-gray-900 flex-shrink-0">
@@ -3430,14 +3415,12 @@ const tripNights = (() => {
                   <div className="flex-1 flex items-center justify-center px-4">
                     <div className="flex-1 h-[2px] bg-green-400 relative">
                       <div className="absolute -top-1 left-1/2 transform -translate-x-1/2">
-                        <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
+                      <i className="fa-solid fa-check text-green-500 text-sm" aria-hidden />
                       </div>
                     </div>
-                    <span className="text-[10px] font-medium text-green-600 bg-green-50 px-3 py-1 rounded-full ml-2 whitespace-nowrap">
-                      ✈️ Non-stop
-                    </span>
+                    <span className="text-[10px] font-medium text-green-600 bg-green-50 px-3 py-1 rounded-full ml-2 whitespace-nowrap inline-flex items-center gap-1">
+  <i className="fa-solid fa-plane" aria-hidden /> Non-stop
+</span>
                   </div>
                 )}
                 
@@ -3456,9 +3439,7 @@ const tripNights = (() => {
             {stops.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                 <span className="text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded-full flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v9a1 1 0 01-1 1H7a1 1 0 01-1-1V9a2 2 0 012-2zM8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 12h.01M15 12h.01M8 16h8" />
-                  </svg>
+                <i className="fa-solid fa-suitcase-rolling" aria-hidden />
                   {stops.length} stop{stops.length > 1 ? 's' : ''}
                 </span>
                 <span className="text-xs text-gray-500">
@@ -3485,9 +3466,7 @@ const tripNights = (() => {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-gray-900">{segment.from || segment.Departure}</span>
-                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
+                <i className="fa-solid fa-arrow-right text-gray-400 text-sm" aria-hidden />
                 <span className="font-semibold text-gray-900">{segment.to || segment.Destination}</span>
               </div>
               <p className="text-xs text-gray-500">
@@ -3607,7 +3586,9 @@ const tripNights = (() => {
                 {rule.feeType && (
                   <p className="text-xs text-gray-500 mt-1">
                     {rule.feeValue === '0' || (rule.feeValue === '0%') ? (
-                      <span className="text-green-600 font-medium">✓ Free cancellation</span>
+                     <span className="text-green-600 font-medium inline-flex items-center gap-1">
+                     <i className="fa-solid fa-circle-check" aria-hidden /> Free cancellation
+                   </span>
                     ) : (
                       <span>Fee: {rule.feeValue}% {rule.feeType} 
                         {rule.metricMin && rule.metricMax && ` (${rule.metricMin} - ${rule.metricMax} ${rule.metricType})`}
@@ -3714,8 +3695,9 @@ const tripNights = (() => {
   <div className="bg-white rounded-2xl shadow-lg p-6 sticky top-24 border border-gray-100">
     <h3 className="text-lg font-semibold text-gray-900 mb-4">Price details</h3>
     {isHotel && (actualItem as any)?.isMultiRoom && (
-  <div className="mb-3 px-3 py-2 bg-[#33a8da]/10 border border-[#33a8da]/20 rounded-lg text-xs font-semibold text-[#33a8da]">
-    🏨 {(actualItem as any).totalRooms} room
+  <div className="mb-3 px-3 py-2 bg-[#33a8da]/10 border border-[#33a8da]/20 rounded-lg text-xs font-semibold text-[#33a8da] inline-flex items-center gap-1.5">
+  <i className="fa-solid fa-hotel" aria-hidden />
+  {(actualItem as any).totalRooms} room
     {(actualItem as any).totalRooms > 1 ? 's' : ''} • {tripNights} night
     {tripNights > 1 ? 's' : ''}
   </div>
@@ -3864,12 +3846,10 @@ const tripNights = (() => {
     </button>
 
     {/* Secure Checkout */}
-    <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1">
-      <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001z" clipRule="evenodd" />
-      </svg>
-      Secure checkout
-    </p>
+    <p className="mt-4 text-xs text-gray-400 text-center flex items-center justify-center gap-1.5">
+  <i className="fa-solid fa-shield-halved text-green-500 text-xs" aria-hidden />
+  Secure checkout
+</p>
   </div>
 </aside>
         </div>

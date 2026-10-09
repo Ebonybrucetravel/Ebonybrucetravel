@@ -2143,7 +2143,7 @@ const hotelFilterOptions = useMemo(() => {
         onClick={onChange}
         className={`w-5 h-5 rounded-lg border-2 transition-all flex items-center justify-center ${isChecked ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-200 group-hover:border-[#33a8da]'}`}
       >
-        {isChecked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}><path d="M5 13l4 4L19 7" /></svg>}
+        {isChecked && <i className="fa-solid fa-check text-white text-xs" aria-hidden />}
       </div>
       <span className={`text-xs font-bold ${isChecked ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-700'}`}>{label}</span>
     </label>
@@ -2535,9 +2535,9 @@ const hotelFilterOptions = useMemo(() => {
               >
                 {isBookingThisFlight ? (
                   <span className="flex items-center gap-2">
-                    <span className="inline-block animate-spin">⟳</span>
-                    Loading...
-                  </span>
+                  <i className="fa-solid fa-circle-notch fa-spin" aria-hidden />
+                  Loading...
+                </span>
                 ) : (
                   'Book Now'
                 )}
@@ -2555,9 +2555,7 @@ const hotelFilterOptions = useMemo(() => {
                   return (
                     <React.Fragment key={`route-${idx}`}>
                       <span className="text-sm font-bold text-gray-900">{origin}</span>
-                      <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
+                      <i className="fa-solid fa-arrow-right text-blue-400 text-sm flex-shrink-0" aria-hidden />
                       <span className="text-sm font-bold text-gray-900">{destination}</span>
                       {idx < slices.length - 1 && (
                         <span className="text-xs text-gray-400 mx-1">|</span>
@@ -2648,9 +2646,7 @@ const hotelFilterOptions = useMemo(() => {
                     {stopCount > 0 && (
   <div className="mt-3 pt-3 border-t border-gray-200">
     <div className="flex items-center gap-2 text-xs text-amber-600">
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
+    <i className="fa-solid fa-clock" aria-hidden />
       <span className="font-medium">
         {stopCount} stop{stopCount > 1 ? 's' : ''}:
       </span>
@@ -2750,9 +2746,7 @@ const hotelFilterOptions = useMemo(() => {
                       <div className="relative">
                         <div className="w-full h-[1px] bg-gray-300"></div>
                         <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
-                          <svg className="w-4 h-4 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
-                          </svg>
+                        <i className="fa-solid fa-plane text-[#33a8da]" aria-hidden />
                         </div>
                       </div>
                       <div className="text-center mt-2">
@@ -2826,17 +2820,13 @@ const hotelFilterOptions = useMemo(() => {
             <div className="flex items-center gap-4 flex-wrap">
               {baggageText && (
                 <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
-                  </svg>
+                 <i className="fa-solid fa-circle-check text-gray-400" aria-hidden />
                   <span className="text-sm text-gray-500">{baggageText}</span>
                 </div>
               )}
               {flight.cabin && (
                 <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" strokeWidth={1.5} />
-                  </svg>
+                 <i className="fa-solid fa-clock text-gray-400" aria-hidden />
                   <span className="text-sm text-gray-500">{flight.cabin}</span>
                 </div>
               )}
@@ -2861,16 +2851,12 @@ const hotelFilterOptions = useMemo(() => {
   
               {isRefundable ? (
                 <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <i className="fa-solid fa-check text-green-500" aria-hidden />
                   <span className="text-sm text-green-600 font-medium">Refundable</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" strokeWidth={1.5} />
-                  </svg>
+                  <i className="fa-solid fa-ban text-gray-400" aria-hidden />
                   <span className="text-sm text-gray-500">Non Refundable</span>
                 </div>
               )}
@@ -3117,9 +3103,7 @@ const hotelFilterOptions = useMemo(() => {
                 isSaved ? 'bg-red-500 text-white' : 'bg-white/70 text-gray-500 hover:bg-white'
               }`}
             >
-              <svg className="w-4 h-4" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-              </svg>
+              <i className={isSaved ? 'fa-solid fa-heart' : 'fa-regular fa-heart'} aria-hidden />
             </button>
           </div>
 
@@ -3209,9 +3193,7 @@ const hotelFilterOptions = useMemo(() => {
               className="mt-4 w-full bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold px-4 py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-1 shadow-sm hover:shadow-md"
             >
               See availability
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
+              <i className="fa-solid fa-chevron-right" aria-hidden />
             </button>
           </div>
         </div>
@@ -3454,9 +3436,7 @@ const hotelFilterOptions = useMemo(() => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {seats > 0 && (
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M12 4.5v15m7.5-7.5h-15" strokeWidth={1.5} />
-                  </svg>
+                  <i className="fa-solid fa-user-group text-gray-400" aria-hidden />
                   <span className="text-[10px] font-bold text-gray-600 uppercase">
                     {seats} Seats
                   </span>
@@ -3465,9 +3445,7 @@ const hotelFilterOptions = useMemo(() => {
   
               {baggageCount > 0 && (
                 <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" strokeWidth={1.5} />
-                  </svg>
+                  <i className="fa-solid fa-suitcase-rolling text-gray-400" aria-hidden />
                   <span className="text-[10px] font-bold text-gray-600 uppercase">
                     {baggageCount} Bags
                   </span>
@@ -3514,9 +3492,7 @@ const hotelFilterOptions = useMemo(() => {
                   )}
                 </div>
                 <div className="text-[#33a8da]">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeWidth={2} stroke="currentColor" fill="none" />
-                  </svg>
+                <i className="fa-solid fa-arrow-right text-[#33a8da]" aria-hidden />
                 </div>
                 <div>
                   <p className="text-gray-500 font-bold uppercase">Drop-off</p>
@@ -3546,9 +3522,7 @@ const hotelFilterOptions = useMemo(() => {
             {item.cancellationRules && item.cancellationRules.length > 0 && (
               <div className="mb-4">
                 <div className="flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                <i className="fa-solid fa-check text-green-500" aria-hidden />
                   <span className="text-[9px] font-bold text-gray-600">
                     {item.cancellationRules.some((r: any) => r.feeValue === '0' || r.feeValue === '0%') 
                       ? 'Free cancellation available' 
@@ -3653,9 +3627,7 @@ const hotelFilterOptions = useMemo(() => {
       ))}
 
       <div className="bg-gradient-to-br from-[#33a8da] to-[#2c98c7] rounded-2xl p-4 text-white text-center shadow-md">
-        <svg className="w-10 h-10 mx-auto mb-2 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+      <i className="fa-solid fa-headset text-4xl mx-auto mb-2 opacity-80 block" aria-hidden />
         <h4 className="font-bold text-base mb-1">Need Help?</h4>
         <p className="text-xs mb-2">24/7 Customer Support</p>
         <p className="text-lg font-bold">+44 1582 340807</p>
@@ -4403,9 +4375,7 @@ const hotelFilterOptions = useMemo(() => {
                   filteredAndSortedFlights.slice(0, flightVisibleCount).map(flight => renderFlightCard(flight))
                 ) : (
                   <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
-                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                    <i className="fa-solid fa-plane-slash text-gray-300 text-6xl mx-auto mb-4 block" aria-hidden />
                     <h3 className="text-xl font-bold text-gray-900 mb-2">No flights found</h3>
                     <p className="text-gray-500">Try adjusting your search criteria or filters</p>
                   </div>
@@ -4460,9 +4430,7 @@ const hotelFilterOptions = useMemo(() => {
                 ) : (
                   <div className="bg-white rounded-[32px] p-20 text-center border-2 border-dashed border-gray-100">
                     <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
+                    <i className="fa-solid fa-magnifying-glass text-gray-300 text-3xl" aria-hidden />
                     </div>
                     <h3 className="text-xl font-black text-gray-900 uppercase">No matching results</h3>
                     <p className="text-sm text-gray-400 font-bold mt-2 uppercase tracking-widest">

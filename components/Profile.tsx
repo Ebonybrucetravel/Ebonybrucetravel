@@ -2056,7 +2056,7 @@ const renderBookingCard = (booking: Booking) => {
             {vehicleType}
           </h4>
           <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap bg-purple-100 text-purple-700">
-            Car Rental
+            Car Transfers
           </span>
           <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
             {displayStatus}
