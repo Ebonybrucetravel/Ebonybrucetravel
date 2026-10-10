@@ -247,8 +247,8 @@ useEffect(() => {
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
         <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-[#33a8da] mb-6"></div>
         <h3 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">
-          Searching for {searchParams?.type?.replace('-', ' ') || 'travel options'}...
-        </h3>
+  Searching for {searchParams?.type === 'car-rentals' ? 'car transfers' : (searchParams?.type?.replace('-', ' ') || 'travel options')}...
+</h3>
         <p className="text-sm text-gray-500 font-medium">
           This may take a few moments
         </p>

@@ -702,18 +702,24 @@ const [extras, setExtras] = useState({
       
       searchData = {
         type: 'car-rentals',
-        // Core Amadeus fields
+        // ✅ New Amadeus-format fields
         startLocationCode: pickupCode,
         endLocationCode: dropoffCode,
         startDateTime: formatDT(carPickupDate, carPickupTime),
         endDateTime: formatDT(carDropoffDate, carDropoffTime),
+      
+        // ✅ Old-format fields — REQUIRED by SearchResults.handleNewSearch
+        pickupLocationCode: pickupCode,
+        dropoffLocationCode: dropoffCode,
+        pickupDateTime: formatDT(carPickupDate, carPickupTime),
+        dropoffDateTime: formatDT(carDropoffDate, carDropoffTime),
+      
         passengers: 2,
         transferType: 'PRIVATE',
         currency: 'GBP',
         duration,
         vehicleCategory: 'BU',
         vehicleCode: 'VAN',
-        // Quick filter attributes
         seatCount: seatFilter || undefined,
         transmission: transmission !== 'ANY' ? transmission : undefined,
         fuelType: fuelType !== 'ANY' ? fuelType : undefined,
@@ -722,7 +728,6 @@ const [extras, setExtras] = useState({
         extras: Object.entries(extras)
           .filter(([, v]) => v)
           .map(([k]) => k.toUpperCase()),
-        // User preferences
         driverAge: driverAged3065 ? '30-65' : 'any',
         dropOffDifferent,
       };
