@@ -2,7 +2,7 @@
       import React, { useState, useEffect, useRef, useCallback } from 'react';
       import { useLanguage } from '../context/LanguageContext';
       import { airports as airportData, airports, type Airport as AirportData } from '../lib/airportData';
-      import { useSearchParams } from 'next/navigation';
+      import { useSearchParams, usePathname } from 'next/navigation';
 
       interface Segment {
         from: string;
@@ -39,7 +39,6 @@
       interface SearchBoxProps {
         onSearch: (data: any) => void;
         loading: boolean;
-        activeTab?: 'flights' | 'hotels' | 'cars';
         onTabChange?: (tab: 'flights' | 'hotels' | 'cars') => void;
       }
 
@@ -75,16 +74,15 @@
         ...airportData
       ];
 
-      const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, activeTab: activeTabProp, onTabChange }) => {
+      const SearchBox: React.FC<SearchBoxProps> = ({ onSearch, loading, onTabChange }) => {
         const { t, currency } = useLanguage();
         const searchParams = useSearchParams();
-        const [activeTab, setActiveTab] = useState<'flights' | 'hotels' | 'cars'>(activeTabProp || 'flights');
-
-        useEffect(() => {
-          if (activeTabProp) {
-            setActiveTab(activeTabProp);
-          }
-        }, [activeTabProp]);
+        const pathname = usePathname();
+      
+        const activeTab: 'flights' | 'hotels' | 'cars' =
+          pathname?.includes('/hotels') ? 'hotels' :
+          pathname?.includes('/cars')   ? 'cars'   :
+          'flights';
 
         const [tripType, setTripType] = useState<'round-trip' | 'one-way' | 'multi-city'>('round-trip');
         const [cabinClass, setCabinClass] = useState('economy');
@@ -1127,7 +1125,6 @@
         };
 
         const handleLocalTabChange = (tab: 'flights' | 'hotels' | 'cars') => {
-          setActiveTab(tab);
           if (onTabChange) {
             onTabChange(tab);
           }
@@ -1436,7 +1433,7 @@
           const type = searchParams.get('type');
 
           if (type === 'hotels') {
-            setActiveTab('hotels');
+
 
             const location = searchParams.get('location');
             const cityCode = searchParams.get('cityCode');
@@ -1460,7 +1457,7 @@
 
             return () => clearTimeout(timer);
           } else if (type === 'car-rentals') {
-            setActiveTab('cars');
+      
 
             const location = searchParams.get('location');
             const pickupCode = searchParams.get('pickupCode');

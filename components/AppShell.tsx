@@ -65,13 +65,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     window.location.href = returnTo;
   };
 
-  const activeTab: 'flights' | 'hotels' | 'cars' = pathname.startsWith('/hotels')
-    ? 'hotels'
-    : pathname.startsWith('/cars')
-      ? 'cars'
-      : 'flights';
 
-  // Admin routes: render only children (no Navbar, Newsletter, Footer)
+
   if (isAdminRoute) {
     return <>{children}</>;
   }
@@ -79,10 +74,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar
-        isLoggedIn={isLoggedIn}
-        user={user ?? { name: '', email: '' }}
-        activeTab={activeTab}
-        onSignIn={() => openAuth('login')}
+  isLoggedIn={isLoggedIn}
+  user={user ?? { name: '', email: '' }}
+  onSignIn={() => openAuth('login')}
         onRegister={() => openAuth('register')}
         onLogoClick={() => router.push('/')}
         onTabClick={(tab) => router.push(`/${tab}`)}

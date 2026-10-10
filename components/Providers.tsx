@@ -3,7 +3,6 @@
 import { ReactNode } from 'react';
 import { LanguageProvider } from '@/context/LanguageContext';
 import { AuthProvider } from '@/context/AuthContext';
-// Change this line - use named import with curly braces
 import { SearchProvider } from '@/context/SearchContext';
 
 export default function Providers({ children }: { children: ReactNode }) {

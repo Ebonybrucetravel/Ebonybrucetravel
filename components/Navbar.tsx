@@ -2,6 +2,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useLanguage } from "../context/LanguageContext";
 import Image from "next/image";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useSearch } from "../context/SearchContext";
 
 // Import types from your context
 type LanguageCode = "EN" | "FR" | "ES" | "DE" | "ZH";
@@ -101,7 +103,6 @@ interface NavbarProps {
     image?: string;
     profilePicture?: string;
   };
-  activeTab?: "flights" | "hotels" | "cars";
   onSignIn?: () => void;
   onRegister?: () => void;
   onProfileClick?: () => void;
@@ -115,7 +116,6 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({
   isLoggedIn,
   user,
-  activeTab = "flights",
   onSignIn,
   onRegister,
   onProfileClick,
@@ -126,6 +126,25 @@ const Navbar: React.FC<NavbarProps> = ({
   onProfileTabSelect,
 }) => {
   const { language, setLanguage, currency, setCurrency, t } = useLanguage();
+  const { searchParams: contextSearchParams } = useSearch();
+  
+  const pathname = usePathname();
+  const urlSearchParams = useSearchParams();
+  
+  // Prefer URL ?type=, fall back to the last search performed in context
+  const urlSearchType = urlSearchParams.get("type");
+  const contextSearchType = contextSearchParams?.type;
+  const effectiveType = urlSearchType || contextSearchType;
+  
+  const isSearchPage = pathname?.startsWith("/search");
+  
+  const activeTab: "flights" | "hotels" | "cars" =
+    isSearchPage && effectiveType === "hotels" ? "hotels" :
+    isSearchPage && (effectiveType === "cars" || effectiveType === "car-rentals") ? "cars" :
+    isSearchPage && effectiveType === "flights" ? "flights" :
+    pathname?.includes("/hotels") ? "hotels" :
+    pathname?.includes("/cars")   ? "cars"   :
+    "flights";
 
   const selectedLang =
     languages.find((l) => l.code === language) || languages[0];

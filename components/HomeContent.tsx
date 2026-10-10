@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import Hero from '@/components/Hero';
 import Partners from '@/components/Partners';
@@ -12,13 +12,15 @@ import CarRentals from '@/components/CarRentals';
 import SpecializedServices from '@/components/SpecializedServices';
 import type { SearchParams } from '@/lib/types';
 
-interface HomeContentProps {
-  activeTab: 'flights' | 'hotels' | 'cars';
-}
-
-export default function HomeContent({ activeTab }: HomeContentProps) {
+export default function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const activeTab: 'flights' | 'hotels' | 'cars' =
+    pathname?.includes('/hotels') ? 'hotels' :
+    pathname?.includes('/cars')   ? 'cars'   :
+    'flights';
   const { search, isSearching } = useSearch();
   const [isHotelSearching, setIsHotelSearching] = useState(false);
   const [isCarSearching, setIsCarSearching] = useState(false);
@@ -219,7 +221,6 @@ const handleCarSearch = async (carData: any) => {
       <Hero
         onSearch={handleSearch}
         loading={isSearching || isHotelSearching || isCarSearching || isTrendingSearching}
-        activeSearchTab={activeTab}
         onTabChange={handleTabChange}
       />
 

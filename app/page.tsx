@@ -3,5 +3,5 @@
 import HomeContent from '@/components/HomeContent';
 
 export default function HomePage() {
-  return <HomeContent activeTab="flights" />;
+  return <HomeContent />;
 }

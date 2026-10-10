@@ -1,22 +1,26 @@
 "use client";
 import React from "react";
 import SearchBox from "./SearchBox";
+import { usePathname } from "next/navigation";
 import { useLanguage } from "../context/LanguageContext";
 
 interface HeroProps {
   onSearch: (data: any) => void;
   loading: boolean;
-  activeSearchTab?: "flights" | "hotels" | "cars";
   onTabChange?: (tab: "flights" | "hotels" | "cars") => void;
 }
-
 const Hero: React.FC<HeroProps> = ({
   onSearch,
   loading,
-  activeSearchTab = "flights",
   onTabChange,
 }) => {
   const { t } = useLanguage();
+  const pathname = usePathname();
+
+  const activeSearchTab: "flights" | "hotels" | "cars" =
+    pathname?.includes("/hotels") ? "hotels" :
+    pathname?.includes("/cars")   ? "cars"   :
+    "flights";
 
   // Hotel search placeholder data
   const hotelDestinations = [
@@ -169,12 +173,11 @@ const Hero: React.FC<HeroProps> = ({
         </div>
 
         <div className="relative z-20 animate-in fade-in zoom-in-95 delay-300 duration-700 mb-0 md:mb-0">
-          <SearchBox
-            onSearch={onSearch}
-            loading={loading}
-            activeTab={activeSearchTab}
-            onTabChange={onTabChange}
-          />
+        <SearchBox
+  onSearch={onSearch}
+  loading={loading}
+  onTabChange={onTabChange}
+/>
         </div>
 
         {(isHotelTab() || isCarTab()) && (
