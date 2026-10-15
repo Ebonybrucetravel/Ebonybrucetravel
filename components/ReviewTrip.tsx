@@ -3769,12 +3769,11 @@ const tripNights = (() => {
         <span className="text-xl font-black text-[#33a8da]">{displayTotalDue}</span>
       </div>
 
-      {/* Breakdown Description */}
-      {breakdownDescription && (
-        <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
-          {breakdownDescription}
-        </div>
-      )}
+      {breakdownDescription && !isDuffel && (
+  <div className="mt-2 text-[10px] text-gray-400 border-t border-gray-50 pt-2 text-center">
+    {breakdownDescription}
+  </div>
+)}
     </div>
 
     {/* Voucher Section */}
