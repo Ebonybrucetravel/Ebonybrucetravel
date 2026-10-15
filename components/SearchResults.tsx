@@ -1487,10 +1487,19 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
     if (sortOption === 'cheapest') {
       filtered.sort((a, b) => (a.originalPriceAmount || a.rawPrice || 0) - (b.originalPriceAmount || b.rawPrice || 0));
     } else if (sortOption === 'fastest') {
+      const getMinutes = (durationStr?: string) => {   
+        if (!durationStr) return Infinity;
+        let hours = 0;
+        let minutes = 0;
+        const hoursMatch = durationStr.match(/(\d+)h/);
+        const minutesMatch = durationStr.match(/(\d+)m/);
+        if (hoursMatch) hours = parseInt(hoursMatch[1]);
+        if (minutesMatch) minutes = parseInt(minutesMatch[1]);
+        return (hours * 60) + minutes;
+      };
+    
       filtered.sort((a, b) => {
-        const durationA = parseInt(a.duration?.replace(/[^0-9]/g, '') || '0');
-        const durationB = parseInt(b.duration?.replace(/[^0-9]/g, '') || '0');
-        return durationA - durationB;
+        return getMinutes(a.duration) - getMinutes(b.duration);
       });
     } else {
       filtered.sort((a, b) => (a.departureTime || '').localeCompare(b.departureTime || ''));
@@ -1508,12 +1517,22 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
 
   const fastestFlight = useMemo(() => {
     if (filteredAndSortedFlights.length === 0) return null;
-    return filteredAndSortedFlights.reduce((min, flight) => {
-      const durationA = parseInt(flight.duration?.replace(/[^0-9]/g, '') || '0');
-      const durationB = parseInt(min.duration?.replace(/[^0-9]/g, '') || '0');
-      return durationA < durationB ? flight : min;
-    });
+    
+    const getMinutes = (durationStr?: string) => {   
+      if (!durationStr) return Infinity;
+      let hours = 0, minutes = 0;
+      const h = durationStr.match(/(\d+)h/);
+      const m = durationStr.match(/(\d+)m/);
+      if (h) hours = parseInt(h[1]);
+      if (m) minutes = parseInt(m[1]);
+      return (hours * 60) + minutes;
+    };
+    
+    return filteredAndSortedFlights.reduce((min, flight) => 
+      getMinutes(flight.duration) < getMinutes(min.duration) ? flight : min
+    );
   }, [filteredAndSortedFlights]);
+
 
   const toggleAirlineFilter = (airline: string) => {
     setSelectedAirlineFilters(prev => {
