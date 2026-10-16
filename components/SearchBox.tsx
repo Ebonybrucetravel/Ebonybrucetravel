@@ -115,6 +115,18 @@
       const [dropOffDifferent, setDropOffDifferent] = useState(false);
       const [driverAged3065, setDriverAged3065] = useState(true);
       const [showQuickFilters, setShowQuickFilters] = useState(false);
+      const [carTripType, setCarTripType] = useState<'one-way' | 'return'>('return');
+     
+const [showCarCalendar, setShowCarCalendar] = useState(false);
+const [carCalendarMode, setCarCalendarMode] = useState<'pickup' | 'return'>('pickup');
+const [calendarMonth, setCalendarMonth] = useState(() => {
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth() };
+});
+
+const [draftDate, setDraftDate] = useState('');
+const [draftHour, setDraftHour] = useState('12');
+const [draftMinute, setDraftMinute] = useState('00');
 
       const [seatFilter, setSeatFilter] = useState<number | null>(null);
       const [transmission, setTransmission] = useState<'ANY' | 'AUTOMATIC' | 'MANUAL'>('ANY');
@@ -1258,40 +1270,108 @@
           return anyCode ? anyCode[1] : '';
         };
 
+        const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = ['00', '15', '30', '45'];
+
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+const getFirstDayOfMonth = (year: number, month: number) => {
+
+  const day = new Date(year, month, 1).getDay();
+  return day === 0 ? 6 : day - 1;
+};
+
+const formatMonthYear = (year: number, month: number) =>
+  new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+const openCarCalendar = (mode: 'pickup' | 'return') => {
+  setCarCalendarMode(mode);
+  const currentDate = mode === 'pickup' ? carPickUpDate : carDropOffDate;
+  const currentTime = mode === 'pickup' ? carPickUpTime : carDropOffTime;
+  const [h, m] = (currentTime || '12:00').split(':');
+
+  const parsed = currentDate ? new Date(currentDate) : new Date();
+  setCalendarMonth({ year: parsed.getFullYear(), month: parsed.getMonth() });
+  setDraftDate(currentDate || today);
+  setDraftHour(h || '12');
+  setDraftMinute(m || '00');
+  setShowCarCalendar(true);
+};
+
+const applyCarCalendar = () => {
+  const timeStr = `${draftHour}:${draftMinute}`;
+  if (carCalendarMode === 'pickup') {
+    setCarPickUpDate(draftDate);
+    setCarPickUpTime(timeStr);
+    
+    if (carDropOffDate && carDropOffDate < draftDate) {
+      setCarDropOffDate(draftDate);
+    }
+  } else {
+    setCarDropOffDate(draftDate);
+    setCarDropOffTime(timeStr);
+  }
+  setShowCarCalendar(false);
+};
+
+const goToPrevMonth = () => {
+  setCalendarMonth((prev) => {
+    const m = prev.month - 1;
+    return m < 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: m };
+  });
+};
+
+const goToNextMonth = () => {
+  setCalendarMonth((prev) => {
+    const m = prev.month + 1;
+    return m > 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: m };
+  });
+};
+
         const handleSubmit = (e: React.FormEvent) => {
           e.preventDefault();
         
           if (activeTab === 'cars') {
             const pickUpCode = extractLocationCode(carPickUp);
-            const dropOffCode = extractLocationCode(carDropOff || carPickUp);
-        
-            if (!pickUpCode || !carPickUpDate || !carDropOffDate) {
+            const dropOffCode = extractLocationCode(carDropOff);
+          
+            // Destination is now ALWAYS required
+            if (!pickUpCode || !dropOffCode || !carPickUpDate) {
               alert(t('search.fillAllRentalDetails') || 'Please fill in all rental details.');
               return;
             }
-        
-            const formatDT = (d: string, t: string) => {
+          
+            // Only require drop-off date for return trips
+            if (carTripType === 'return' && !carDropOffDate) {
+              alert('Please select a return date.');
+              return;
+            }
+          
+            // For one-way, mirror pick-up date/time into drop-off
+            const finalDropOffDate = carTripType === 'return' ? carDropOffDate : carPickUpDate;
+            const finalDropOffTime = carTripType === 'return' ? carDropOffTime : carPickUpTime;
+          
+            const formatDT = (d: string, tm: string) => {
               const date = new Date(d);
-              const [h, m] = t.split(':');
+              const [h, m] = tm.split(':');
               return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${h}:${m}:00`;
             };
-        
+          
             const pickupDate = new Date(`${carPickUpDate}T${carPickUpTime}:00`);
-            const dropoffDate = new Date(`${carDropOffDate}T${carDropOffTime}:00`);
+            const dropoffDate = new Date(`${finalDropOffDate}T${finalDropOffTime}:00`);
             const diffHours = (dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60);
             const hours = Math.floor(diffHours);
             const minutes = Math.round((diffHours - hours) * 60);
             const duration = `PT${hours}H${minutes > 0 ? `${minutes}M` : ''}`;
-        
-            // ✅ Amadeus-aligned payload
+          
             const searchData = {
               type: 'car-rentals',
-        
+              tripType: carTripType, // ✅ one-way | return
+          
               // ===== Core Amadeus Fields =====
               startLocationCode: pickUpCode,
               endLocationCode: dropOffCode,
               startDateTime: formatDT(carPickUpDate, carPickUpTime),
-              endDateTime: formatDT(carDropOffDate, carDropOffTime),
+              endDateTime: formatDT(finalDropOffDate, finalDropOffTime),
               passengers: carTravellers,
               transferType,
               currency: 'GBP',
@@ -1299,8 +1379,8 @@
               vehicleCategory,
               vehicleCode,
               baggages: baggages > 0 ? baggages : undefined,
-        
-              // ===== Quick Filter Attributes (Amadeus: vehicle.*) =====
+          
+              // ===== Quick Filter Attributes =====
               seatCount: seatFilter || undefined,
               transmission: transmission !== 'ANY' ? transmission : undefined,
               fuelType: fuelType !== 'ANY' ? fuelType : undefined,
@@ -1309,15 +1389,14 @@
               extras: Object.entries(extras)
                 .filter(([, v]) => v)
                 .map(([k]) => k.toUpperCase()),
-        
+          
               // ===== User Preferences =====
               driverAge: driverAged3065 ? '30-65' : 'any',
               dropOffDifferent,
             };
-        
+          
             console.log('🚗 Amadeus Car Rental Payload:', JSON.stringify(searchData, null, 2));
             onSearch(searchData);
-        
           } else if (activeTab === 'flights') {
             const errors = [];
             const flightSegments = segments.map((segment, index) => {
@@ -1528,6 +1607,46 @@
           }
         };
 
+        const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+const updateDropdownPosition = useCallback((el: HTMLElement | null) => {
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  setDropdownPos({
+    top: rect.bottom + 6,
+    left: rect.left,
+    width: Math.max(rect.width, 420),
+  });
+}, []);
+
+useEffect(() => {
+  if (!showFromDropdown && !showToDropdown) return;
+  const handleScrollOrResize = () => {
+    if (showFromDropdown && fromRef.current) {
+      const rect = fromRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 6,
+        left: rect.left,
+        width: Math.max(rect.width, 420),
+      });
+    } else if (showToDropdown && toRef.current) {
+      const rect = toRef.current.getBoundingClientRect();
+      // For TO, anchor so dropdown's right edge aligns with TO's right edge
+      setDropdownPos({
+        top: rect.bottom + 6,
+        left: Math.max(rect.right - 420, 12),
+        width: 420,
+      });
+    }
+  };
+  handleScrollOrResize();
+  window.addEventListener('scroll', handleScrollOrResize, true);
+  window.addEventListener('resize', handleScrollOrResize);
+  return () => {
+    window.removeEventListener('scroll', handleScrollOrResize, true);
+    window.removeEventListener('resize', handleScrollOrResize);
+  };
+}, [showFromDropdown, showToDropdown]);
         const renderTravellerDropdown = () => (
           showTravellerDropdown && (
             <div 
@@ -1684,57 +1803,72 @@
           )
         );
 
-        const renderAirportDropdown = (suggestions: Airport[], type: 'from' | 'to', index: number = 0) => (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
-            {loadingSuggestions ? (
-              <div className="px-4 py-3 text-center text-gray-500">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da] mx-auto"></div>
-                <p className="text-xs mt-2">{t('search.loadingAirports')}</p>
-              </div>
-            ) : suggestions.length === 0 ? (
-              <div className="px-4 py-3 text-center text-gray-500 text-sm">
-                {t('search.noAirports')}
-              </div>
-            ) : (
-              <>
-                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-                  <div className="text-xs font-bold text-gray-500">
-                    {suggestions.length} {suggestions.length === 1 ? t('search.airport') : t('search.airports')} {t('search.found')}
-                  </div>
+        const renderAirportDropdown = (
+          suggestions: Airport[],
+          type: 'from' | 'to',
+          index: number = 0
+        ) => {
+          if (!dropdownPos) return null;
+          return (
+            <div
+              className="fixed bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-80 overflow-y-auto z-[9999]"
+              style={{
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+                width: dropdownPos.width,
+                boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+              }}
+            >
+              {loadingSuggestions ? (
+                <div className="px-4 py-3 text-center text-gray-500">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da] mx-auto"></div>
+                  <p className="text-xs mt-2">{t('search.loadingAirports')}</p>
                 </div>
-                {suggestions.map((airport, idx) => (
-                  <button
-                    key={`${type}-${airport.code}-${index}-${airport.city}-${idx}-${airport.name}`}
-                    type="button"
-                    className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group"
-                    onClick={() => handleAirportSelect(airport, type, index)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-sm font-bold group-hover:bg-blue-200 transition-colors">
-                          {airport.code}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-gray-900 truncate">{airport.city}, {airport.country}</div>
-                        <div className="text-xs text-gray-500 truncate">{airport.name}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5 font-bold uppercase">
-                          {airport.type === 'city' ? t('search.cityType') : t('search.airportType')}
-                        </div>
-                      </div>
+              ) : suggestions.length === 0 ? (
+                <div className="px-4 py-3 text-center text-gray-500 text-sm">
+                  {t('search.noAirports')}
+                </div>
+              ) : (
+                <>
+                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                    <div className="text-xs font-bold text-gray-500">
+                      {suggestions.length} {suggestions.length === 1 ? t('search.airport') : t('search.airports')} {t('search.found')}
                     </div>
-                  </button>
-                ))}
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                  <div className="text-xs text-center text-gray-500">
-                    {t('search.selectHint')}
                   </div>
-                </div>
-              </>
-            )}
-          </div>
-        );
-
+                  {suggestions.map((airport, idx) => (
+                    <button
+                      key={`${type}-${airport.code}-${index}-${airport.city}-${idx}-${airport.name}`}
+                      type="button"
+                      className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group"
+                      onClick={() => handleAirportSelect(airport, type, index)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0">
+                          <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-sm font-bold group-hover:bg-blue-200 transition-colors">
+                            {airport.code}
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-gray-900 truncate">{airport.city}, {airport.country}</div>
+                          <div className="text-xs text-gray-500 truncate">{airport.name}</div>
+                          <div className="text-[10px] text-gray-400 mt-0.5 font-bold uppercase">
+                            {airport.type === 'city' ? t('search.cityType') : t('search.airportType')}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                  <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                    <div className="text-xs text-center text-gray-500">
+                      {t('search.selectHint')}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        };
+        
         const renderHotelLocationDropdown = () => (
           showHotelLocationDropdown && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
@@ -1790,29 +1924,206 @@
           )
         );
 
-        const renderCarLocationDropdown = (suggestions: CarLocationSuggestion[], type: 'pickUp' | 'dropOff') => (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
+        const renderCarLocationDropdown = (
+          suggestions: CarLocationSuggestion[],
+          type: 'pickUp' | 'dropOff'
+        ) => (
+          <div
+            className={`absolute top-full mt-1 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-80 overflow-y-auto z-[120] w-[360px] sm:w-[440px] ${
+              type === 'dropOff' ? 'right-0' : 'left-0'
+            }`}
+            style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}
+          >
             {suggestions.map((location, idx) => (
-              <button key={`${location.code}-${idx}`} type="button" className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group" onClick={() => handleCarLocationSelect(location, type)}>
+              <button
+                key={`${location.code}-${idx}`}
+                type="button"
+                className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group"
+                onClick={() => handleCarLocationSelect(location, type)}
+              >
                 <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${location.type === 'city' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>{location.code}</div>
-                  <div className="flex-1 min-w-0"><div className="font-bold text-gray-900 truncate">{location.city}, {location.country}</div><div className="text-xs text-gray-500 truncate">{location.name}</div></div>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${
+                    location.type === 'city' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                  }`}>
+                    {location.code}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-gray-900 truncate">{location.city}, {location.country}</div>
+                    <div className="text-xs text-gray-500 truncate">{location.name}</div>
+                  </div>
                 </div>
               </button>
             ))}
           </div>
         );
 
+        const renderCarDateTimePicker = () => {
+          if (!showCarCalendar) return null;
+        
+          const { year, month } = calendarMonth;
+          const daysInMonth = getDaysInMonth(year, month);
+          const firstWeekday = getFirstDayOfMonth(year, month);
+          const todayStr = today;
+        
+          const cells: (number | null)[] = [
+            ...Array(firstWeekday).fill(null),
+            ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+          ];
+          // Pad to full weeks
+          while (cells.length % 7 !== 0) cells.push(null);
+        
+          const dateString = (day: number) =>
+            `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+          const isDisabled = (day: number) => {
+            const ds = dateString(day);
+            if (carCalendarMode === 'return' && carPickUpDate && ds < carPickUpDate) return true;
+            if (carCalendarMode === 'pickup' && ds < today) return true;
+            return false;
+          };
+        
+          const isSelected = (day: number) => dateString(day) === draftDate;
+        
+          return (
+            <div
+              className="fixed inset-0 z-[300] flex items-start justify-center p-4 sm:p-6 overflow-y-auto bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+              onClick={() => setShowCarCalendar(false)}
+            >
+              <div
+                className="bg-white rounded-2xl w-full max-w-sm shadow-2xl my-auto sm:my-12 animate-in zoom-in-95 duration-200 overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header: Month + Nav */}
+                <div className="flex items-center justify-between px-6 pt-6 pb-4">
+                  <button
+                    type="button"
+                    onClick={goToPrevMonth}
+                    className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 transition"
+                    aria-label="Previous month"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {formatMonthYear(year, month)}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={goToNextMonth}
+                    className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 transition"
+                    aria-label="Next month"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+        
+                {/* Weekday header */}
+                <div className="grid grid-cols-7 px-4 text-center text-xs font-bold text-gray-500 mb-2">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+                    <div key={d} className="py-2">{d}</div>
+                  ))}
+                </div>
+        
+                {/* Days grid */}
+                <div className="grid grid-cols-7 px-4 gap-y-1 text-center">
+                  {cells.map((day, idx) => {
+                    if (day === null) return <div key={idx} className="h-10" />;
+                    const disabled = isDisabled(day);
+                    const selected = isSelected(day);
+                    const isToday = dateString(day) === todayStr;
+        
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => !disabled && setDraftDate(dateString(day))}
+                        className={`h-10 rounded-full text-sm font-semibold transition flex items-center justify-center relative
+                          ${disabled ? 'text-gray-300 cursor-not-allowed' : 'text-gray-800 hover:bg-gray-100'}
+                          ${selected ? 'bg-[#1a1a1a] text-white hover:bg-[#1a1a1a]' : ''}
+                        `}
+                      >
+                        {day}
+                        {isToday && !selected && (
+                          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#33a8da] rounded-full" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+        
+                {/* Time selection */}
+                <div className="mt-6 mx-6 p-4 bg-gray-50 rounded-xl flex items-center justify-between gap-4">
+                  <span className="text-sm font-bold text-gray-800 whitespace-nowrap">
+                    {carCalendarMode === 'pickup' ? 'Pick-up time' : 'Return time'}
+                  </span>
+                  <div className="flex items-end gap-3">
+                    <div className="flex flex-col">
+                      <label className="text-[10px] font-bold text-gray-500 mb-1">Hour</label>
+                      <select
+                        value={draftHour}
+                        onChange={(e) => setDraftHour(e.target.value)}
+                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da] cursor-pointer"
+                      >
+                        {HOURS.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-col">
+                      <label className="text-[10px] font-bold text-gray-500 mb-1">Minute</label>
+                      <select
+                        value={draftMinute}
+                        onChange={(e) => setDraftMinute(e.target.value)}
+                        className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#33a8da] cursor-pointer"
+                      >
+                        {MINUTES.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+        
+                {/* CTA */}
+                <div className="p-6 pt-5">
+                  <button
+                    type="button"
+                    onClick={applyCarCalendar}
+                    className="w-full bg-[#33a8da] hover:bg-[#005999] text-white font-bold text-sm py-3.5 rounded-lg transition active:scale-[0.98]"
+                  >
+                    {carCalendarMode === 'pickup' ? 'Set pick-up date and time' : 'Set return date and time'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
         const renderFlightSegmentRow = (segment: Segment, index: number) => {
           const isFirst = index === 0;
           const isMultiCity = tripType === 'multi-city';
           const isRangeSelected = tripType === 'round-trip' && index === 0 && segment.date && returnDate;
 
-          return (
-            <div key={index} className="bg-[#33a8da] rounded-xl p-[2px] flex flex-col lg:flex-row items-stretch gap-[2px] mb-2 shadow-sm animate-in slide-in-from-left duration-200">
+
+
+          
+            return (
+              <div
+                key={index}
+                className={`bg-[#33a8da] rounded-xl p-[2px] flex flex-col lg:flex-row items-stretch gap-[2px] mb-2 shadow-sm animate-in slide-in-from-left duration-200 relative ${
+                  (showFromDropdown || showToDropdown) && activeSegmentIndex === index ? 'z-[130]' : 'z-0'
+                }`}
+              >
               <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-[2px]">
                 <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-[2px]">
-                  <div className="relative" ref={index === activeSegmentIndex ? fromRef : null}>
+                <div
+  className={`relative ${showFromDropdown && activeSegmentIndex === index ? 'z-[140]' : 'z-0'}`}
+  ref={index === activeSegmentIndex ? fromRef : null}
+>
                     <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 relative rounded-t-lg sm:rounded-l-lg sm:rounded-tr-none min-h-[72px]">
                       <svg className="w-4 h-4 text-[#33a8da] self-center" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
@@ -1975,7 +2286,7 @@
         };
 
         return (
-          <div className="w-full max-w-7xl mx-auto px-2 md:px-4">
+          <div className="w-full max-w-7xl mx-auto px-2 md:px-4 relative z-20">
             <div className="bg-white rounded-2xl md:rounded-[24px] shadow-2xl overflow-visible">
               <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 pt-4 md:pt-6 border-b border-gray-100 overflow-x-auto hide-scrollbar">
                 {[
@@ -1991,7 +2302,7 @@
                 ))}
               </div>
 
-              <form onSubmit={handleSubmit} className="p-4 md:p-6 lg:p-8">
+              <form onSubmit={handleSubmit} className="p-4 md:p-6 lg:p-8 relative">
                 {activeTab === 'flights' && (
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
@@ -2227,425 +2538,515 @@
         </div>
       )}
 
-      {activeTab === 'cars' && (
-        <div className="space-y-3">
-          {/* ===== MAIN SEARCH BAR — Your Brand Color ===== */}
-          <div className="flex flex-col lg:flex-row items-stretch gap-[3px] bg-[#33a8da] rounded-xl p-[3px] shadow-lg">
-            
-            {/* Pick-Up Location */}
-            <div className="flex-[1.5] relative" ref={carPickUpRef}>
-              <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 rounded-t-lg lg:rounded-l-lg lg:rounded-tr-none min-h-[70px]">
-                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
-                    {t('search.pickUp') || 'Pick-up location'}
-                  </label>
-                  <input
-                    type="text"
-                    value={carPickUp}
-                    onChange={(e) => handleCarPickUpChange(e.target.value)}
-                    onFocus={() => setShowCarPickUpDropdown(true)}
-                    placeholder="Airport, city, or station"
-                    className="w-full font-semibold text-gray-900 focus:outline-none text-sm bg-transparent p-0 placeholder:text-gray-400 placeholder:font-normal"
-                  />
-                </div>
-                {carPickUp && (
-                  <button type="button" onClick={() => { setCarPickUp(''); setShowCarPickUpDropdown(false); }}
-                    className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
-                )}
-              </div>
-              {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
-            </div>
+{activeTab === 'cars' && (
+  <div className="space-y-4">
 
-            {/* Pick-Up Date */}
-            <div className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
-              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <div className="flex-1 min-w-0">
-                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
-                  {t('search.pickDate') || 'Pick-up date'}
-                </label>
-                <input
-                  type="date"
-                  min={today}
-                  value={carPickUpDate}
-                  onChange={(e) => setCarPickUpDate(e.target.value)}
-                  className="w-full font-semibold outline-none text-sm bg-transparent p-0 text-gray-900"
-                />
-              </div>
-            </div>
-
-            {/* Pick-Up Time */}
-            <div className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
-              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="flex-1 min-w-0">
-                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Time</label>
-                <input
-                  type="time"
-                  value={carPickUpTime}
-                  onChange={(e) => setCarPickUpTime(e.target.value)}
-                  className="w-full font-semibold outline-none text-sm bg-transparent p-0 text-gray-900"
-                />
-              </div>
-            </div>
-
-            {/* Drop-Off Date + Time OR Drop-Off Location */}
-            {!dropOffDifferent ? (
-              <>
-                <div className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
-                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <div className="flex-1 min-w-0">
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
-                      {t('search.dropDate') || 'Drop-off date'}
-                    </label>
-                    <input
-                      type="date"
-                      min={carPickUpDate || today}
-                      value={carDropOffDate}
-                      onChange={(e) => setCarDropOffDate(e.target.value)}
-                      className="w-full font-semibold outline-none text-sm bg-transparent p-0 text-gray-900"
-                    />
-                  </div>
-                </div>
-                <div className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
-                  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div className="flex-1 min-w-0">
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Time</label>
-                    <input
-                      type="time"
-                      value={carDropOffTime}
-                      onChange={(e) => setCarDropOffTime(e.target.value)}
-                      className="w-full font-semibold outline-none text-sm bg-transparent p-0 text-gray-900"
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-[2] bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px] relative">
-                <svg className="w-5 h-5 text-[#33a8da] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <label className="block text-[10px] font-bold text-[#33a8da] mb-0.5">
-                    {t('search.dropOff') || 'Drop-off location'}
-                  </label>
-                  <input
-                    type="text"
-                    value={carDropOff}
-                    onChange={(e) => handleCarDropOffChange(e.target.value)}
-                    onFocus={() => setShowCarDropOffDropdown(true)}
-                    placeholder="Airport, city, or station"
-                    className="w-full font-semibold text-gray-900 focus:outline-none text-sm bg-transparent p-0 placeholder:text-gray-400 placeholder:font-normal"
-                  />
-                </div>
-                {carDropOff && (
-                  <button type="button" onClick={() => { setCarDropOff(''); setShowCarDropOffDropdown(false); }}
-                    className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
-                )}
-                {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
-              </div>
+    {/* ===== One-way / Return Toggle (Booking.com style) ===== */}
+    <div className="flex items-center gap-6 px-1">
+      {(['one-way', 'return'] as const).map((type) => (
+        <button
+          key={type}
+          type="button"
+          onClick={() => setCarTripType(type)}
+          className="flex items-center gap-2 group"
+        >
+          <div
+            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+              carTripType === type
+                ? 'border-[#33a8da]'
+                : 'border-gray-300 group-hover:border-gray-400'
+            }`}
+          >
+            {carTripType === type && (
+              <div className="w-2.5 h-2.5 bg-[#33a8da] rounded-full" />
             )}
-
-            {/* Search Button */}
-            <div className="bg-white p-2 md:p-2.5 flex items-center justify-center lg:rounded-r-lg border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
-              <button
-                type="submit"
-                disabled={loading || !carPickUp || (dropOffDifferent && !carDropOff) || !carPickUpDate || !carDropOffDate}
-                className="bg-[#33a8da] hover:bg-[#2c98c7] text-white px-6 py-3 font-bold text-sm rounded-lg transition active:scale-95 w-full shadow-md h-[46px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>{t('search.searchBtn')}</span>
-                  </div>
-                ) : (
-                  <span>{t('search.searchBtn')}</span>
-                )}
-              </button>
-            </div>
           </div>
+          <span
+            className={`text-sm font-bold capitalize transition-colors ${
+              carTripType === type
+                ? 'text-gray-900'
+                : 'text-gray-500 group-hover:text-gray-700'
+            }`}
+          >
+            {type === 'one-way' ? 'One-way' : 'Return'}
+          </span>
+        </button>
+      ))}
+    </div>
 
-          {/* ===== SUB BAR: Checkboxes + Quick Filters ===== */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-2">
-            <div className="flex flex-wrap items-center gap-5">
-              {/* Drop car off at different location */}
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${
-                  dropOffDifferent ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-400 group-hover:border-gray-600'
-                }`}>
-                  {dropOffDifferent && (
-                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                <input type="checkbox" checked={dropOffDifferent}
-                  onChange={(e) => {
-                    setDropOffDifferent(e.target.checked);
-                    if (!e.target.checked) setCarDropOff(carPickUp);
-                  }}
-                  className="hidden" />
-                <span className="text-sm font-medium text-gray-700">
-                  {t('search.dropDifferent') || 'Drop car off at different location'}
-                </span>
-              </label>
+    {/* ===== MAIN SEARCH BAR ===== */}
+    <div className="flex flex-col lg:flex-row items-stretch gap-[3px] bg-[#33a8da] rounded-xl p-[3px] shadow-lg">
 
-              {/* Driver aged 30-65 */}
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${
-                  driverAged3065 ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-400 group-hover:border-gray-600'
-                }`}>
-                  {driverAged3065 && (
-                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                <input type="checkbox" checked={driverAged3065}
-                  onChange={(e) => setDriverAged3065(e.target.checked)}
-                  className="hidden" />
-                <span className="text-sm font-medium text-gray-700">
-                  {t('search.driverAge') || 'Driver aged 30 – 65?'}
-                </span>
-              </label>
-            </div>
-
-            {/* Quick filters button */}
+      {/* 1. Pick-up Location */}
+      <div className="flex-[1.5] relative" ref={carPickUpRef}>
+        <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 rounded-t-lg lg:rounded-l-lg lg:rounded-tr-none min-h-[70px]">
+          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
+              {t('search.pickUp') || 'Pick-up location'}
+            </label>
+            <input
+              type="text"
+              value={carPickUp}
+              onChange={(e) => handleCarPickUpChange(e.target.value)}
+              onFocus={() => setShowCarPickUpDropdown(true)}
+              placeholder="Enter pick-up location"
+              className="w-full font-semibold text-gray-900 focus:outline-none text-sm bg-transparent p-0 placeholder:text-gray-400 placeholder:font-normal"
+            />
+          </div>
+          {carPickUp && (
             <button
               type="button"
-              onClick={() => setShowQuickFilters(true)}
-              className="flex items-center gap-2 text-[#33a8da] hover:text-[#2c98c7] font-semibold text-sm transition group"
+              onClick={() => {
+                setCarPickUp('');
+                setShowCarPickUpDropdown(false);
+              }}
+              className="text-gray-400 hover:text-gray-600 text-lg leading-none"
             >
-              <svg className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              ×
+            </button>
+          )}
+        </div>
+        {showCarPickUpDropdown && renderCarLocationDropdown(carPickUpSuggestions, 'pickUp')}
+      </div>
+
+      {/* 2. Swap Button */}
+      <div className="hidden lg:flex items-center justify-center bg-white px-2 border-l border-r border-gray-100">
+        <button
+          type="button"
+          onClick={() => {
+            const temp = carPickUp;
+            setCarPickUp(carDropOff);
+            setCarDropOff(temp);
+          }}
+          className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition"
+          title="Swap locations"
+        >
+          <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+        </button>
+      </div>
+
+      {/* 3. Destination (ALWAYS VISIBLE) */}
+      <div className="flex-[1.5] relative" ref={carDropOffRef}>
+        <div className="bg-white p-2.5 md:p-3 flex items-center gap-2 min-h-[70px]">
+          <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
+              Destination
+            </label>
+            <input
+              type="text"
+              value={carDropOff}
+              onChange={(e) => handleCarDropOffChange(e.target.value)}
+              onFocus={() => setShowCarDropOffDropdown(true)}
+              placeholder="Enter destination"
+              className="w-full font-semibold text-gray-900 focus:outline-none text-sm bg-transparent p-0 placeholder:text-gray-400 placeholder:font-normal"
+            />
+          </div>
+          {carDropOff && (
+            <button
+              type="button"
+              onClick={() => {
+                setCarDropOff('');
+                setShowCarDropOffDropdown(false);
+              }}
+              className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {showCarDropOffDropdown && renderCarLocationDropdown(carDropOffSuggestions, 'dropOff')}
+      </div>
+
+    {/* 4. Pick-up Date & Time (Combined) - Custom Picker */}
+<div className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
+  <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+  </svg>
+  <button
+    type="button"
+    onClick={() => openCarCalendar('pickup')}
+    className="flex-1 min-w-0 text-left cursor-pointer"
+  >
+    <label className="block text-[10px] font-medium text-gray-500 mb-0.5 cursor-pointer">
+      Pick-up date and time
+    </label>
+    <div className="font-semibold text-sm text-gray-900 truncate">
+      {carPickUpDate
+        ? `${new Date(carPickUpDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}, ${carPickUpTime}`
+        : 'Select date & time'}
+    </div>
+  </button>
+</div>
+
+      {/* 5. Return Date & Time (Only for Return) - Custom Picker */}
+{carTripType === 'return' && (
+  <div className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
+    <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+    <button
+      type="button"
+      onClick={() => openCarCalendar('return')}
+      className="flex-1 min-w-0 text-left cursor-pointer"
+    >
+      <label className="block text-[10px] font-medium text-gray-500 mb-0.5 cursor-pointer">
+        Return date and time
+      </label>
+      <div className="font-semibold text-sm text-gray-900 truncate">
+        {carDropOffDate
+          ? `${new Date(carDropOffDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}, ${carDropOffTime}`
+          : 'Select date & time'}
+      </div>
+    </button>
+  </div>
+)}
+
+      {/* 6. Passengers */}
+      <div
+        className="flex-1 bg-white p-2.5 md:p-3 flex items-center gap-2 border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px] relative"
+        ref={carTravellerRef}
+      >
+        <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+        </svg>
+        <div
+          className="flex-1 min-w-0 cursor-pointer"
+          onClick={() => setShowCarTravellerDropdown(!showCarTravellerDropdown)}
+        >
+          <label className="block text-[10px] font-medium text-gray-500 mb-0.5">
+            Passengers
+          </label>
+          <span className="block font-semibold text-gray-900 text-sm">
+            {carTravellers}
+          </span>
+        </div>
+        {renderCarTravellerDropdown()}
+      </div>
+
+      {/* 7. Search Button */}
+      <div className="bg-white p-2 md:p-2.5 flex items-center justify-center lg:rounded-r-lg border-t lg:border-t-0 lg:border-l border-gray-100 min-h-[70px]">
+        <button
+          type="submit"
+          disabled={
+            loading ||
+            !carPickUp ||
+            !carDropOff ||
+            !carPickUpDate ||
+            (carTripType === 'return' && !carDropOffDate)
+          }
+          className="bg-[#33a8da] hover:bg-[#005999] text-white px-6 py-3 font-bold text-sm rounded-lg transition active:scale-95 w-full shadow-md h-[46px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? (
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <span>Search</span>
+            </div>
+          ) : (
+            <span>Search</span>
+          )}
+        </button>
+      </div>
+    </div>
+
+    {/* ===== SUB BAR: Driver Age + Quick Filters ===== */}
+    <div className="flex flex-wrap items-center justify-between gap-3 px-2">
+      <div className="flex flex-wrap items-center gap-5">
+        <label className="flex items-center gap-2 cursor-pointer group">
+          <div
+            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition ${
+              driverAged3065
+                ? 'bg-[#33a8da] border-[#33a8da]'
+                : 'border-gray-400 group-hover:border-gray-600'
+            }`}
+          >
+            {driverAged3065 && (
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
-              <span>{t('search.quickFilters') || 'Quick filters'}</span>
-              {(seatFilter || transmission !== 'ANY' || fuelType !== 'ANY' || airConditioning || unlimitedMileage || Object.values(extras).some(Boolean)) && (
-                <span className="w-2 h-2 rounded-full bg-[#33a8da] animate-pulse"></span>
-              )}
+            )}
+          </div>
+          <input
+            type="checkbox"
+            checked={driverAged3065}
+            onChange={(e) => setDriverAged3065(e.target.checked)}
+            className="hidden"
+          />
+          <span className="text-sm font-medium text-gray-700">
+            {t('search.driverAge') || 'Driver aged 30 – 65?'}
+          </span>
+        </label>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setShowQuickFilters(true)}
+        className="flex items-center gap-2 text-[#33a8da] hover:text-[#005999] font-semibold text-sm transition group"
+      >
+        <svg className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+        <span>{t('search.quickFilters') || 'Quick filters'}</span>
+        {(seatFilter ||
+          transmission !== 'ANY' ||
+          fuelType !== 'ANY' ||
+          airConditioning ||
+          unlimitedMileage ||
+          Object.values(extras).some(Boolean)) && (
+          <span className="w-2 h-2 rounded-full bg-[#33a8da] animate-pulse"></span>
+        )}
+      </button>
+    </div>
+
+    {/* ===== Quick Filters Modal (unchanged) ===== */}
+    {showQuickFilters && (
+      <div
+        className="fixed inset-0 z-[200] flex items-start justify-center p-4 sm:p-6 overflow-y-auto bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+        onClick={() => setShowQuickFilters(false)}
+      >
+        <div
+          className="bg-white rounded-2xl w-full max-w-lg shadow-2xl my-auto sm:my-8 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="bg-white flex items-start justify-between p-6 pb-4 border-b border-gray-100 flex-shrink-0">
+            <div>
+              <h3 className="text-2xl font-bold text-gray-900">
+                {t('search.quickFilters') || 'Quick filters'}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                {t('search.quickFiltersSub') || 'Powered by Ebony Bruce Travels · Fine-tune your results'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowQuickFilters(false)}
+              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           </div>
 
-          {showQuickFilters && (
-  <div
-    className="fixed inset-0 z-[200] flex items-start justify-center p-4 sm:p-6 overflow-y-auto bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
-    onClick={() => setShowQuickFilters(false)}
-  >
-    <div
-      className="bg-white rounded-2xl w-full max-w-lg shadow-2xl my-auto sm:my-8 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] animate-in zoom-in-95 duration-200"
-      onClick={(e) => e.stopPropagation()}
-    >
-                {/* Header */}
-                <div className="bg-white flex items-start justify-between p-6 pb-4 border-b border-gray-100 flex-shrink-0">
-                  <div>
-                    <h3 className="text-2xl font-bold text-gray-900">
-                      {t('search.quickFilters') || 'Quick filters'}
-                    </h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {t('search.quickFiltersSub') || 'Powered by Ebony Bruce Travels · Fine-tune your results'}
-                    </p>
-                  </div>
-                  <button type="button" onClick={() => setShowQuickFilters(false)}
-                    className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-500 transition">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Body */}
-                {/* Body */}
-<div className="p-6 space-y-6 overflow-y-auto flex-1">
-
-                  {/* Number of seats — Amadeus: vehicle.seats */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      {t('search.numSeats') || 'Number of seats'}
-                    </h4>
-                    <div className="grid grid-cols-3 gap-3">
-                      {[
-                        { label: '2–4 seats', value: 4 },
-                        { label: '5 seats',   value: 5 },
-                        { label: '6+ seats',  value: 7 },
-                      ].map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setSeatFilter(seatFilter === opt.value ? null : opt.value)}
-                          className={`py-3 px-3 rounded-full border text-xs font-semibold transition flex items-center justify-center gap-2 ${
-                            seatFilter === opt.value
-                              ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
-                              : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Transmission — Amadeus: vehicle.transmission */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Transmission
-                    </h4>
-                    <div className="grid grid-cols-3 gap-3">
-                      {(['ANY', 'AUTOMATIC', 'MANUAL'] as const).map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setTransmission(opt)}
-                          className={`py-2.5 px-3 rounded-full border text-xs font-semibold transition ${
-                            transmission === opt
-                              ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
-                              : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          {opt === 'ANY' ? 'Any' : opt.charAt(0) + opt.slice(1).toLowerCase()}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Fuel Type — Amadeus: vehicle.fuel */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Fuel type
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {(['ANY', 'PETROL', 'DIESEL', 'ELECTRIC', 'HYBRID'] as const).map((opt) => (
-                        <button
-                          key={opt}
-                          type="button"
-                          onClick={() => setFuelType(opt)}
-                          className={`py-2 px-4 rounded-full border text-xs font-semibold transition ${
-                            fuelType === opt
-                              ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
-                              : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          {opt === 'ANY' ? 'Any' : opt.charAt(0) + opt.slice(1).toLowerCase()}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Popular Extras — Amadeus: vehicle.extras */}
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      {t('search.popularExtras') || 'Popular extras'}
-                    </h4>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Only show rental companies with these extras available
-                    </p>
-                    <div className="flex flex-wrap gap-3">
-                      {[
-                        { key: 'additionalDriver', label: 'Additional driver', icon: '👤' },
-                        { key: 'infantSeat',       label: 'Infant car seat',   icon: '👶' },
-                        { key: 'boosterSeat',      label: 'Booster seat',      icon: '🧒' },
-                        { key: 'carSeat',          label: 'Child car seat',    icon: '🪑' },
-                        { key: 'gps',              label: 'GPS navigation',    icon: '🗺️' },
-                        { key: 'wifi',             label: 'Wi-Fi hotspot',     icon: '📶' },
-                      ].map((extra) => (
-                        <button
-                          key={extra.key}
-                          type="button"
-                          onClick={() => setExtras(prev => ({ ...prev, [extra.key]: !prev[extra.key as keyof typeof prev] }))}
-                          className={`py-2.5 px-4 rounded-full border text-xs font-semibold transition flex items-center gap-2 ${
-                            extras[extra.key as keyof typeof extras]
-                              ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
-                              : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          <span>{extra.icon}</span>
-                          {extra.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Toggles — Amadeus: vehicle.airConditioning, vehicle.unlimitedMileage */}
-                  <div className="space-y-4 pt-2 border-t border-gray-100">
-                    {[
-                      { label: 'Automatic transmission only', value: transmission === 'AUTOMATIC', setter: () => setTransmission(transmission === 'AUTOMATIC' ? 'ANY' : 'AUTOMATIC') },
-                      { label: 'Air conditioning',            value: airConditioning,             setter: () => setAirConditioning(!airConditioning) },
-                      { label: 'Unlimited mileage',           value: unlimitedMileage,            setter: () => setUnlimitedMileage(!unlimitedMileage) },
-                    ].map((toggle) => (
-                      <div key={toggle.label} className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-800 flex items-center gap-2">
-                          <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                          {toggle.label}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={toggle.setter}
-                          className={`relative w-12 h-7 rounded-full transition-colors ${
-                            toggle.value ? 'bg-[#33a8da]' : 'bg-gray-300'
-                          }`}
-                        >
-                          <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${
-                            toggle.value ? 'translate-x-5' : 'translate-x-0'
-                          }`} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="bg-white flex items-center justify-between gap-4 p-6 pt-4 border-t border-gray-100 flex-shrink-0">
+          {/* Body */}
+          <div className="p-6 space-y-6 overflow-y-auto flex-1">
+            {/* Number of seats */}
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {t('search.numSeats') || 'Number of seats'}
+              </h4>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: '2–4 seats', value: 4 },
+                  { label: '5 seats', value: 5 },
+                  { label: '6+ seats', value: 7 },
+                ].map((opt) => (
                   <button
+                    key={opt.value}
                     type="button"
-                    onClick={() => {
-                      setSeatFilter(null);
-                      setTransmission('ANY');
-                      setFuelType('ANY');
-                      setAirConditioning(false);
-                      setUnlimitedMileage(false);
-                      setExtras({ additionalDriver: false, infantSeat: false, boosterSeat: false, carSeat: false, gps: false, wifi: false });
-                    }}
-                    className="text-[#33a8da] hover:text-[#2c98c7] font-semibold text-sm px-4 py-2.5"
+                    onClick={() => setSeatFilter(seatFilter === opt.value ? null : opt.value)}
+                    className={`py-3 px-3 rounded-full border text-xs font-semibold transition flex items-center justify-center gap-2 ${
+                      seatFilter === opt.value
+                        ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                        : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                    }`}
                   >
-                    Clear
+                    {opt.label}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowQuickFilters(false)}
-                    className="flex-1 bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold text-sm py-3 px-6 rounded-lg transition"
-                  >
-                    Apply
-                  </button>
-                </div>
+                ))}
               </div>
             </div>
-          )}
+
+            {/* Transmission */}
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Transmission
+              </h4>
+              <div className="grid grid-cols-3 gap-3">
+                {(['ANY', 'AUTOMATIC', 'MANUAL'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setTransmission(opt)}
+                    className={`py-2.5 px-3 rounded-full border text-xs font-semibold transition ${
+                      transmission === opt
+                        ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                        : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt === 'ANY' ? 'Any' : opt.charAt(0) + opt.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fuel Type */}
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Fuel type
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                {(['ANY', 'PETROL', 'DIESEL', 'ELECTRIC', 'HYBRID'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setFuelType(opt)}
+                    className={`py-2 px-4 rounded-full border text-xs font-semibold transition ${
+                      fuelType === opt
+                        ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                        : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {opt === 'ANY' ? 'Any' : opt.charAt(0) + opt.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Popular Extras */}
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#33a8da]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                {t('search.popularExtras') || 'Popular extras'}
+              </h4>
+              <p className="text-xs text-gray-500 mb-3">
+                Only show rental companies with these extras available
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { key: 'additionalDriver', label: 'Additional driver', icon: '👤' },
+                  { key: 'infantSeat', label: 'Infant car seat', icon: '👶' },
+                  { key: 'boosterSeat', label: 'Booster seat', icon: '🧒' },
+                  { key: 'carSeat', label: 'Child car seat', icon: '🪑' },
+                  { key: 'gps', label: 'GPS navigation', icon: '🗺️' },
+                  { key: 'wifi', label: 'Wi-Fi hotspot', icon: '📶' },
+                ].map((extra) => (
+                  <button
+                    key={extra.key}
+                    type="button"
+                    onClick={() =>
+                      setExtras((prev) => ({
+                        ...prev,
+                        [extra.key]: !prev[extra.key as keyof typeof prev],
+                      }))
+                    }
+                    className={`py-2.5 px-4 rounded-full border text-xs font-semibold transition flex items-center gap-2 ${
+                      extras[extra.key as keyof typeof extras]
+                        ? 'border-[#33a8da] bg-[#33a8da]/10 text-[#33a8da] ring-2 ring-[#33a8da]'
+                        : 'border-gray-300 text-gray-700 hover:border-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{extra.icon}</span>
+                    {extra.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Toggles */}
+            <div className="space-y-4 pt-2 border-t border-gray-100">
+              {[
+                {
+                  label: 'Automatic transmission only',
+                  value: transmission === 'AUTOMATIC',
+                  setter: () =>
+                    setTransmission(transmission === 'AUTOMATIC' ? 'ANY' : 'AUTOMATIC'),
+                },
+                {
+                  label: 'Air conditioning',
+                  value: airConditioning,
+                  setter: () => setAirConditioning(!airConditioning),
+                },
+                {
+                  label: 'Unlimited mileage',
+                  value: unlimitedMileage,
+                  setter: () => setUnlimitedMileage(!unlimitedMileage),
+                },
+              ].map((toggle) => (
+                <div key={toggle.label} className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-800 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {toggle.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggle.setter}
+                    className={`relative w-12 h-7 rounded-full transition-colors ${
+                      toggle.value ? 'bg-[#33a8da]' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${
+                        toggle.value ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="bg-white flex items-center justify-between gap-4 p-6 pt-4 border-t border-gray-100 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setSeatFilter(null);
+                setTransmission('ANY');
+                setFuelType('ANY');
+                setAirConditioning(false);
+                setUnlimitedMileage(false);
+                setExtras({
+                  additionalDriver: false,
+                  infantSeat: false,
+                  boosterSeat: false,
+                  carSeat: false,
+                  gps: false,
+                  wifi: false,
+                });
+              }}
+              className="text-[#33a8da] hover:text-[#2c98c7] font-semibold text-sm px-4 py-2.5"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowQuickFilters(false)}
+              className="flex-1 bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold text-sm py-3 px-6 rounded-lg transition"
+            >
+              Apply
+            </button>
+          </div>
         </div>
-      )}
+      </div>
+    )}
+    {renderCarDateTimePicker()}
+  </div>
+)}
+       
               </form>
             </div>
 

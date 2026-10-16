@@ -106,6 +106,18 @@ const [loadingCarSuggestions, setLoadingCarSuggestions] = useState(false);
   const [dropOffDifferent, setDropOffDifferent] = useState(false);
 const [driverAged3065, setDriverAged3065] = useState(true);
 const [showQuickFilters, setShowQuickFilters] = useState(false);
+
+  const [carTripType, setCarTripType] = useState<'one-way' | 'return'>('return');
+
+  const [showCarCalendar, setShowCarCalendar] = useState(false);
+  const [carCalendarMode, setCarCalendarMode] = useState<'pickup' | 'return'>('pickup');
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [draftDate, setDraftDate] = useState('');
+  const [draftHour, setDraftHour] = useState('10');
+  const [draftMinute, setDraftMinute] = useState('00');
 const [seatFilter, setSeatFilter] = useState<number | null>(null);
 const [transmission, setTransmission] = useState<'ANY' | 'AUTOMATIC' | 'MANUAL'>('ANY');
 const [fuelType, setFuelType] = useState<'ANY' | 'PETROL' | 'DIESEL' | 'ELECTRIC' | 'HYBRID'>('ANY');
@@ -611,6 +623,75 @@ const [extras, setExtras] = useState({
     };
   }, []);
 
+
+  const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = ['00', '15', '30', '45'];
+
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+
+const getFirstDayOfMonth = (year: number, month: number) => {
+  const day = new Date(year, month, 1).getDay();
+  return day === 0 ? 6 : day - 1; // Monday-first
+};
+
+const formatMonthYear = (year: number, month: number) =>
+  new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+const getTodayStr = () => new Date().toISOString().split('T')[0];
+
+const openCarCalendar = (mode: 'pickup' | 'return') => {
+  setCarCalendarMode(mode);
+  const currentDate = mode === 'pickup' ? carPickupDate : carDropoffDate;
+  const currentTime = mode === 'pickup' ? carPickupTime : carDropoffTime;
+  const [h, m] = (currentTime || '10:00').split(':');
+
+  const parsed = currentDate ? new Date(currentDate) : new Date();
+  setCalendarMonth({ year: parsed.getFullYear(), month: parsed.getMonth() });
+  setDraftDate(currentDate || getTodayStr());
+  setDraftHour(h || '10');
+  setDraftMinute(m || '00');
+  setShowCarCalendar(true);
+};
+
+const applyCarCalendar = () => {
+  const timeStr = `${draftHour}:${draftMinute}`;
+  if (carCalendarMode === 'pickup') {
+    setCarPickupDate(draftDate);
+    setCarPickupTime(timeStr);
+    // Push drop-off forward if it's before pickup
+    if (carDropoffDate && carDropoffDate < draftDate) {
+      setCarDropoffDate(draftDate);
+    }
+  } else {
+    setCarDropoffDate(draftDate);
+    setCarDropoffTime(timeStr);
+  }
+  setShowCarCalendar(false);
+};
+
+const goToPrevMonth = () => {
+  setCalendarMonth((prev) => {
+    const m = prev.month - 1;
+    return m < 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: m };
+  });
+};
+
+const goToNextMonth = () => {
+  setCalendarMonth((prev) => {
+    const m = prev.month + 1;
+    return m > 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: m };
+  });
+};
+
+// Format like "Fri 23 Oct, 10:00"
+const formatCarDateTime = (date: string, time: string) => {
+  if (!date) return 'Select date & time';
+  return `${new Date(date).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short'
+  })}, ${time}`;
+};
+  
+
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     
@@ -680,41 +761,54 @@ const [extras, setExtras] = useState({
       
     } else if (activeTab === 'cars') {
       const pickupCode = extractCode(carPickup);
-      const dropoffCode = extractCode(carDropoff || carPickup);
-      
-      if (!pickupCode || !carPickupDate || !carDropoffDate) {
+      const dropoffCode = extractCode(carDropoff);
+    
+      // Destination is now ALWAYS required
+      if (!pickupCode || !dropoffCode || !carPickupDate) {
         alert('Please fill in all rental details.');
         return;
       }
-      
+    
+      // Only require drop-off date for return trips
+      if (carTripType === 'return' && !carDropoffDate) {
+        alert('Please select a return date.');
+        return;
+      }
+    
+      // For one-way, mirror pick-up date/time into drop-off
+      const finalDropoffDate = carTripType === 'return' ? carDropoffDate : carPickupDate;
+      const finalDropoffTime = carTripType === 'return' ? carDropoffTime : carPickupTime;
+    
       const formatDT = (d: string, t: string) => {
         const date = new Date(d);
         const [h, m] = t.split(':');
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${h}:${m}:00`;
       };
-      
+    
       const pickupDate = new Date(`${carPickupDate}T${carPickupTime}:00`);
-      const dropoffDate = new Date(`${carDropoffDate}T${carDropoffTime}:00`);
+      const dropoffDate = new Date(`${finalDropoffDate}T${finalDropoffTime}:00`);
       const diffHours = (dropoffDate.getTime() - pickupDate.getTime()) / (1000 * 60 * 60);
       const hours = Math.floor(diffHours);
       const minutes = Math.round((diffHours - hours) * 60);
       const duration = `PT${hours}H${minutes > 0 ? `${minutes}M` : ''}`;
-      
+    
       searchData = {
         type: 'car-rentals',
-        // ✅ New Amadeus-format fields
+        tripType: carTripType,
+    
+        // Amadeus format
         startLocationCode: pickupCode,
         endLocationCode: dropoffCode,
         startDateTime: formatDT(carPickupDate, carPickupTime),
-        endDateTime: formatDT(carDropoffDate, carDropoffTime),
-      
-        // ✅ Old-format fields — REQUIRED by SearchResults.handleNewSearch
+        endDateTime: formatDT(finalDropoffDate, finalDropoffTime),
+    
+        // Legacy format (for backwards compat with SearchResults)
         pickupLocationCode: pickupCode,
         dropoffLocationCode: dropoffCode,
         pickupDateTime: formatDT(carPickupDate, carPickupTime),
-        dropoffDateTime: formatDT(carDropoffDate, carDropoffTime),
-      
-        passengers: 2,
+        dropoffDateTime: formatDT(finalDropoffDate, finalDropoffTime),
+    
+        passengers: passengers.adults,
         transferType: 'PRIVATE',
         currency: 'GBP',
         duration,
@@ -725,11 +819,9 @@ const [extras, setExtras] = useState({
         fuelType: fuelType !== 'ANY' ? fuelType : undefined,
         airConditioning: airConditioning || undefined,
         unlimitedMileage: unlimitedMileage || undefined,
-        extras: Object.entries(extras)
-          .filter(([, v]) => v)
-          .map(([k]) => k.toUpperCase()),
+        extras: Object.entries(extras).filter(([, v]) => v).map(([k]) => k.toUpperCase()),
         driverAge: driverAged3065 ? '30-65' : 'any',
-        dropOffDifferent,
+        dropOffDifferent: carDropoff !== carPickup,
       };
       console.log('🚗 Amadeus Car Rental Payload:', searchData);
     }
@@ -741,6 +833,7 @@ const [extras, setExtras] = useState({
     passengers, cabinClass,
     hotelLocation, checkIn, checkOut, guests,
     carPickup, carDropoff, carPickupDate, carPickupTime, carDropoffDate, carDropoffTime,
+    carTripType,  
     multiCitySegments, onSearch,
     seatFilter, transmission, fuelType, airConditioning, unlimitedMileage, extras,
     driverAged3065, dropOffDifferent,
@@ -777,6 +870,151 @@ const [extras, setExtras] = useState({
       )}
     </div>
   ), []);
+
+  const renderCarDateTimePicker = useCallback(() => {
+    if (!showCarCalendar) return null;
+
+    const { year, month } = calendarMonth;
+    const daysInMonth = getDaysInMonth(year, month);
+    const firstWeekday = getFirstDayOfMonth(year, month);
+    const todayStr = getTodayStr();
+
+    const cells: (number | null)[] = [
+      ...Array(firstWeekday).fill(null),
+      ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+    ];
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const dateString = (day: number) =>
+      `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    const isDisabled = (day: number) => {
+      const ds = dateString(day);
+      if (carCalendarMode === 'return' && carPickupDate && ds < carPickupDate) return true;
+      if (carCalendarMode === 'pickup' && ds < todayStr) return true;
+      return false;
+    };
+
+    const isSelected = (day: number) => dateString(day) === draftDate;
+
+    return (
+      <div
+        className="fixed inset-0 z-[300] flex items-start justify-center p-4 sm:p-6 overflow-y-auto bg-black/40 backdrop-blur-sm"
+        onClick={() => setShowCarCalendar(false)}
+      >
+        <div
+          className="bg-white rounded-2xl w-full max-w-sm shadow-2xl my-auto sm:my-12 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 pt-6 pb-4">
+            <button
+              type="button"
+              onClick={goToPrevMonth}
+              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 transition"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h3 className="text-lg font-bold text-gray-900">{formatMonthYear(year, month)}</h3>
+            <button
+              type="button"
+              onClick={goToNextMonth}
+              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-700 transition"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Weekdays */}
+          <div className="grid grid-cols-7 px-4 text-center text-xs font-bold text-gray-500 mb-2">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
+              <div key={d} className="py-2">{d}</div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 px-4 gap-y-1 text-center">
+            {cells.map((day, idx) => {
+              if (day === null) return <div key={idx} className="h-10" />;
+              const disabled = isDisabled(day);
+              const selected = isSelected(day);
+              const isToday = dateString(day) === todayStr;
+
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => !disabled && setDraftDate(dateString(day))}
+                  className={`h-10 rounded-full text-sm font-semibold transition flex items-center justify-center relative
+                    ${disabled ? 'text-gray-300 cursor-not-allowed' : 'text-gray-800 hover:bg-gray-100'}
+                    ${selected ? 'bg-[#1a1a1a] text-white hover:bg-[#1a1a1a]' : ''}`}
+                >
+                  {day}
+                  {isToday && !selected && (
+                    <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[#33a8da] rounded-full" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Time */}
+          <div className="mt-6 mx-6 p-4 bg-gray-50 rounded-xl flex items-center justify-between gap-4">
+            <span className="text-sm font-bold text-gray-800 whitespace-nowrap">
+              {carCalendarMode === 'pickup' ? 'Pick-up time' : 'Return time'}
+            </span>
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col">
+                <label className="text-[10px] font-bold text-gray-500 mb-1">Hour</label>
+                <select
+                  value={draftHour}
+                  onChange={(e) => setDraftHour(e.target.value)}
+                  className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#33a8da] cursor-pointer"
+                >
+                  {HOURS.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-[10px] font-bold text-gray-500 mb-1">Minute</label>
+                <select
+                  value={draftMinute}
+                  onChange={(e) => setDraftMinute(e.target.value)}
+                  className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#33a8da] cursor-pointer"
+                >
+                  {MINUTES.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <div className="p-6 pt-5">
+            <button
+              type="button"
+              onClick={applyCarCalendar}
+              className="w-full bg-[#33a8da] hover:bg-[#2c98c7] text-white font-bold text-sm py-3.5 rounded-lg transition active:scale-[0.98]"
+            >
+              {carCalendarMode === 'pickup' ? 'Set pick-up date and time' : 'Set return date and time'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [
+    showCarCalendar,
+    calendarMonth,
+    draftDate,
+    draftHour,
+    draftMinute,
+    carCalendarMode,
+    carPickupDate,
+    carDropoffDate,
+  ]);
 
   const renderHotelDropdown = useCallback(() => (
     <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-64 overflow-y-auto z-50">
@@ -1180,10 +1418,37 @@ const [extras, setExtras] = useState({
 
     const renderCarCompact = useMemo(() => (
       <div className="space-y-3">
+        {/* ===== One-way / Return Toggle ===== */}
+        <div className="flex items-center gap-6 px-1">
+          {(['one-way', 'return'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setCarTripType(type)}
+              className="flex items-center gap-2 group"
+            >
+              <div
+                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                  carTripType === type ? 'border-[#33a8da]' : 'border-gray-300 group-hover:border-gray-400'
+                }`}
+              >
+                {carTripType === type && <div className="w-2 h-2 bg-[#33a8da] rounded-full" />}
+              </div>
+              <span
+                className={`text-xs font-semibold capitalize transition-colors ${
+                  carTripType === type ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-700'
+                }`}
+              >
+                {type === 'one-way' ? 'One-way' : 'Return'}
+              </span>
+            </button>
+          ))}
+        </div>
+    
         {/* ===== MAIN SEARCH BAR ===== */}
         <div className="flex items-start gap-3 flex-wrap lg:flex-nowrap">
-    
-          {/* Pickup Location */}
+          
+          {/* 1. Pick-up Location */}
           <div className="flex-1 min-w-[180px] relative" ref={carPickupRef}>
             <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
               PICK-UP
@@ -1192,9 +1457,7 @@ const [extras, setExtras] = useState({
               type="text"
               value={carPickup}
               onChange={(e) => handleCarPickupChange(e.target.value)}
-              onFocus={() => {
-                if (carPickup.length < 2) setShowCarPickupDropdown(true);
-              }}
+              onFocus={() => { if (carPickup.length < 2) setShowCarPickupDropdown(true); }}
               placeholder="Airport, city, or station"
               className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
             />
@@ -1204,93 +1467,23 @@ const [extras, setExtras] = useState({
                 const displayValue = `${airport.code} - ${airport.city}, ${airport.country}`;
                 setCarPickup(displayValue);
                 setShowCarPickupDropdown(false);
-                if (!dropOffDifferent) setCarDropoff(displayValue);
               },
               loadingCarSuggestions
             )}
           </div>
     
-          {/* Pickup Date */}
-          <div className="flex-1 min-w-[130px]">
+          {/* 2. Destination — ALWAYS VISIBLE */}
+          <div className="flex-1 min-w-[180px] relative" ref={carDropoffRef}>
             <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              PICK-UP DATE
-            </label>
-            <input
-              type="date"
-              value={carPickupDate}
-              onChange={(e) => setCarPickupDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-            />
-          </div>
-    
-          {/* Pickup Time */}
-          <div className="flex-1 min-w-[110px]">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              TIME
-            </label>
-            <input
-              type="time"
-              value={carPickupTime}
-              onChange={(e) => setCarPickupTime(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-            />
-          </div>
-    
-          {/* Dropoff Date */}
-          <div className="flex-1 min-w-[130px]">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              DROP-OFF DATE
-            </label>
-            <input
-              type="date"
-              min={carPickupDate}
-              value={carDropoffDate}
-              onChange={(e) => setCarDropoffDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-            />
-          </div>
-    
-          {/* Dropoff Time */}
-          <div className="flex-1 min-w-[110px]">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              TIME
-            </label>
-            <input
-              type="time"
-              value={carDropoffTime}
-              onChange={(e) => setCarDropoffTime(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
-            />
-          </div>
-    
-          {/* Search Button */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
-            <button
-              type="submit"
-              disabled={loading || !carPickup || (dropOffDifferent && !carDropoff) || !carPickupDate || !carDropoffDate}
-              className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
-            >
-              {loading ? '...' : 'Search'}
-            </button>
-          </div>
-        </div>
-    
-        {/* ===== Conditional Drop-off Location (only if different) ===== */}
-        {dropOffDifferent && (
-          <div className="relative">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              DROP-OFF LOCATION
+              DESTINATION
             </label>
             <input
               type="text"
               value={carDropoff}
               onChange={(e) => handleCarDropoffChange(e.target.value)}
-              onFocus={() => {
-                if (carDropoff.length < 2) setShowCarDropoffDropdown(true);
-              }}
+              onFocus={() => { if (carDropoff.length < 2) setShowCarDropoffDropdown(true); }}
               placeholder="Airport, city, or station"
-              className="w-full px-3 py-2 text-sm border border-[#33a8da] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-white"
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white"
             />
             {showCarDropoffDropdown && renderDropdown(
               carDropoffSuggestions,
@@ -1301,37 +1494,59 @@ const [extras, setExtras] = useState({
               loadingCarSuggestions
             )}
           </div>
-        )}
+    
+          {/* 3. Pick-up Date & Time — Custom Picker */}
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              PICK-UP DATE & TIME
+            </label>
+            <button
+              type="button"
+              onClick={() => openCarCalendar('pickup')}
+              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left truncate"
+            >
+              {formatCarDateTime(carPickupDate, carPickupTime)}
+            </button>
+          </div>
+    
+          {/* 4. Return Date & Time — Only for Return */}
+          {carTripType === 'return' && (
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                RETURN DATE & TIME
+              </label>
+              <button
+                type="button"
+                onClick={() => openCarCalendar('return')}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#33a8da] focus:ring-2 focus:ring-[#33a8da]/20 transition-all bg-gray-50 hover:bg-white text-left truncate"
+              >
+                {formatCarDateTime(carDropoffDate, carDropoffTime)}
+              </button>
+            </div>
+          )}
+    
+          {/* 5. Search Button */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-semibold text-transparent uppercase tracking-wider">.</span>
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                !carPickup ||
+                !carDropoff ||
+                !carPickupDate ||
+                (carTripType === 'return' && !carDropoffDate)
+              }
+              className="bg-[#33a8da] text-white px-6 py-2 rounded-xl text-sm font-semibold hover:bg-[#2c98c7] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md whitespace-nowrap"
+            >
+              {loading ? '...' : 'Search'}
+            </button>
+          </div>
+        </div>
     
         {/* ===== SUB BAR: Checkboxes + Quick Filters ===== */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex flex-wrap items-center gap-5">
-            {/* Drop car off at different location */}
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
-                dropOffDifferent ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-400 group-hover:border-gray-600'
-              }`}>
-                {dropOffDifferent && (
-                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </div>
-              <input
-                type="checkbox"
-                checked={dropOffDifferent}
-                onChange={(e) => {
-                  setDropOffDifferent(e.target.checked);
-                  if (!e.target.checked) setCarDropoff(carPickup);
-                }}
-                className="hidden"
-              />
-              <span className="text-xs font-medium text-gray-600">
-                Drop car off at different location
-              </span>
-            </label>
-    
-            {/* Driver aged 30-65 */}
             <label className="flex items-center gap-2 cursor-pointer group">
               <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
                 driverAged3065 ? 'bg-[#33a8da] border-[#33a8da]' : 'border-gray-400 group-hover:border-gray-600'
@@ -1348,13 +1563,10 @@ const [extras, setExtras] = useState({
                 onChange={(e) => setDriverAged3065(e.target.checked)}
                 className="hidden"
               />
-              <span className="text-xs font-medium text-gray-600">
-                Driver aged 30 – 65?
-              </span>
+              <span className="text-xs font-medium text-gray-600">Driver aged 30 – 65?</span>
             </label>
           </div>
     
-          {/* Quick filters button */}
           <button
             type="button"
             onClick={() => setShowQuickFilters(true)}
@@ -1399,9 +1611,8 @@ const [extras, setExtras] = useState({
                 </button>
               </div>
     
-              {/* Body */}
+              {/* Body — same as before */}
               <div className="p-6 space-y-6 overflow-y-auto flex-1">
-    
                 {/* Number of seats */}
                 <div>
                   <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
@@ -1413,8 +1624,8 @@ const [extras, setExtras] = useState({
                   <div className="grid grid-cols-3 gap-3">
                     {[
                       { label: '2–4 seats', value: 4 },
-                      { label: '5 seats',   value: 5 },
-                      { label: '6+ seats',  value: 7 },
+                      { label: '5 seats', value: 5 },
+                      { label: '6+ seats', value: 7 },
                     ].map((opt) => (
                       <button
                         key={opt.value}
@@ -1499,11 +1710,11 @@ const [extras, setExtras] = useState({
                   <div className="flex flex-wrap gap-3">
                     {[
                       { key: 'additionalDriver', label: 'Additional driver', icon: '👤' },
-                      { key: 'infantSeat',       label: 'Infant car seat',   icon: '👶' },
-                      { key: 'boosterSeat',      label: 'Booster seat',      icon: '🧒' },
-                      { key: 'carSeat',          label: 'Child car seat',    icon: '🪑' },
-                      { key: 'gps',              label: 'GPS navigation',    icon: '🗺️' },
-                      { key: 'wifi',             label: 'Wi-Fi hotspot',     icon: '📶' },
+                      { key: 'infantSeat', label: 'Infant car seat', icon: '👶' },
+                      { key: 'boosterSeat', label: 'Booster seat', icon: '🧒' },
+                      { key: 'carSeat', label: 'Child car seat', icon: '🪑' },
+                      { key: 'gps', label: 'GPS navigation', icon: '🗺️' },
+                      { key: 'wifi', label: 'Wi-Fi hotspot', icon: '📶' },
                     ].map((extra) => (
                       <button
                         key={extra.key}
@@ -1526,8 +1737,8 @@ const [extras, setExtras] = useState({
                 <div className="space-y-4 pt-2 border-t border-gray-100">
                   {[
                     { label: 'Automatic transmission only', value: transmission === 'AUTOMATIC', setter: () => setTransmission(transmission === 'AUTOMATIC' ? 'ANY' : 'AUTOMATIC') },
-                    { label: 'Air conditioning',            value: airConditioning,             setter: () => setAirConditioning(!airConditioning) },
-                    { label: 'Unlimited mileage',           value: unlimitedMileage,            setter: () => setUnlimitedMileage(!unlimitedMileage) },
+                    { label: 'Air conditioning', value: airConditioning, setter: () => setAirConditioning(!airConditioning) },
+                    { label: 'Unlimited mileage', value: unlimitedMileage, setter: () => setUnlimitedMileage(!unlimitedMileage) },
                   ].map((toggle) => (
                     <div key={toggle.label} className="flex items-center justify-between">
                       <span className="text-sm font-medium text-gray-800 flex items-center gap-2">
@@ -1579,15 +1790,18 @@ const [extras, setExtras] = useState({
             </div>
           </div>
         )}
+    
+        {/* ===== Calendar Picker Popover ===== */}
+        {renderCarDateTimePicker()}
       </div>
     ), [
-      // Deps
       carPickup, carDropoff, carPickupDate, carPickupTime, carDropoffDate, carDropoffTime,
-      showCarPickupDropdown, showCarDropoffDropdown,
+      carTripType, showCarPickupDropdown, showCarDropoffDropdown,
       carPickupSuggestions, carDropoffSuggestions, loadingCarSuggestions, loading,
-      dropOffDifferent, driverAged3065, showQuickFilters,
+      driverAged3065, showQuickFilters,
       seatFilter, transmission, fuelType, airConditioning, unlimitedMileage, extras,
-      handleCarPickupChange, handleCarDropoffChange, renderDropdown,
+      handleCarPickupChange, handleCarDropoffChange, renderDropdown, renderCarDateTimePicker,
+      
     ]);
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
