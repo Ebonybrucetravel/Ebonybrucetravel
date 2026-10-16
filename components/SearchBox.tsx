@@ -3050,24 +3050,6 @@ useEffect(() => {
               </form>
             </div>
 
-            {showCarTravellerDropdown && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm" onClick={() => setShowCarTravellerDropdown(false)}>
-                <div className="bg-white p-6 rounded-2xl w-full max-w-xs shadow-2xl" onClick={e => e.stopPropagation()}>
-                  <h4 className="font-black text-gray-900 mb-4 uppercase text-xs tracking-widest">{t('search.passengers')}</h4>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm">{t('search.passengers')}</span>
-                      <div className="flex items-center gap-3">
-                        <button type="button" onClick={() => updateCarTravellers(false)} className="w-8 h-8 rounded-full border border-gray-200">-</button>
-                        <span className="font-bold">{carTravellers}</span>
-                        <button type="button" onClick={() => updateCarTravellers(true)} className="w-8 h-8 rounded-full border border-gray-200">+</button>
-                      </div>
-                    </div>
-                  </div>
-                  <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full bg-[#33a8da] text-white py-3 rounded-xl font-bold mt-6 text-xs uppercase tracking-widest">{t('search.done')}</button>
-                </div>
-              </div>
-            )}
           </div>
         );
       };
