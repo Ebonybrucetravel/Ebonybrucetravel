@@ -49,57 +49,69 @@ const CAR_ROUTES_BY_GEO: Record<
   }>
 > = {
   NG: [
-    { from: { code: "LOS", city: "Lagos", country: "Nigeria" }, to: { code: "LOS", city: "Lagos", country: "Nigeria" } },
-    { from: { code: "ABV", city: "Abuja", country: "Nigeria" }, to: { code: "ABV", city: "Abuja", country: "Nigeria" } },
     { from: { code: "LOS", city: "Lagos", country: "Nigeria" }, to: { code: "ABV", city: "Abuja", country: "Nigeria" } },
+    { from: { code: "LOS", city: "Lagos", country: "Nigeria" }, to: { code: "PHC", city: "Port Harcourt", country: "Nigeria" } },
+    { from: { code: "ABV", city: "Abuja", country: "Nigeria" }, to: { code: "KAN", city: "Kano", country: "Nigeria" } },
+    { from: { code: "LOS", city: "Lagos", country: "Nigeria" }, to: { code: "IBA", city: "Ibadan", country: "Nigeria" } },
   ],
   GB: [
-    { from: { code: "LHR", city: "London", country: "United Kingdom" }, to: { code: "LHR", city: "London", country: "United Kingdom" } },
+    { from: { code: "LHR", city: "London", country: "United Kingdom" }, to: { code: "MAN", city: "Manchester", country: "United Kingdom" } },
+    { from: { code: "LHR", city: "London", country: "United Kingdom" }, to: { code: "EDI", city: "Edinburgh", country: "United Kingdom" } },
     { from: { code: "LHR", city: "London", country: "United Kingdom" }, to: { code: "CDG", city: "Paris", country: "France" } },
-    { from: { code: "MAN", city: "Manchester", country: "United Kingdom" }, to: { code: "MAN", city: "Manchester", country: "United Kingdom" } },
+    { from: { code: "MAN", city: "Manchester", country: "United Kingdom" }, to: { code: "LHR", city: "London", country: "United Kingdom" } },
   ],
   US: [
-    { from: { code: "JFK", city: "New York", country: "USA" }, to: { code: "JFK", city: "New York", country: "USA" } },
-    { from: { code: "LAX", city: "Los Angeles", country: "USA" }, to: { code: "LAX", city: "Los Angeles", country: "USA" } },
-    { from: { code: "MIA", city: "Miami", country: "USA" }, to: { code: "MIA", city: "Miami", country: "USA" } },
+    { from: { code: "JFK", city: "New York", country: "USA" }, to: { code: "BOS", city: "Boston", country: "USA" } },
+    { from: { code: "LAX", city: "Los Angeles", country: "USA" }, to: { code: "SFO", city: "San Francisco", country: "USA" } },
+    { from: { code: "MIA", city: "Miami", country: "USA" }, to: { code: "MCO", city: "Orlando", country: "USA" } },
+    { from: { code: "ORD", city: "Chicago", country: "USA" }, to: { code: "DTW", city: "Detroit", country: "USA" } },
   ],
   AE: [
-    { from: { code: "DXB", city: "Dubai", country: "UAE" }, to: { code: "DXB", city: "Dubai", country: "UAE" } },
     { from: { code: "DXB", city: "Dubai", country: "UAE" }, to: { code: "AUH", city: "Abu Dhabi", country: "UAE" } },
-    { from: { code: "AUH", city: "Abu Dhabi", country: "UAE" }, to: { code: "AUH", city: "Abu Dhabi", country: "UAE" } },
+    { from: { code: "AUH", city: "Abu Dhabi", country: "UAE" }, to: { code: "DXB", city: "Dubai", country: "UAE" } },
+    { from: { code: "DXB", city: "Dubai", country: "UAE" }, to: { code: "SHJ", city: "Sharjah", country: "UAE" } },
   ],
   FR: [
-    { from: { code: "CDG", city: "Paris", country: "France" }, to: { code: "CDG", city: "Paris", country: "France" } },
-    { from: { code: "ORY", city: "Paris", country: "France" }, to: { code: "ORY", city: "Paris", country: "France" } },
+    { from: { code: "CDG", city: "Paris", country: "France" }, to: { code: "NCE", city: "Nice", country: "France" } },
+    { from: { code: "ORY", city: "Paris", country: "France" }, to: { code: "LYS", city: "Lyon", country: "France" } },
   ],
   DE: [
-    { from: { code: "FRA", city: "Frankfurt", country: "Germany" }, to: { code: "FRA", city: "Frankfurt", country: "Germany" } },
-    { from: { code: "BER", city: "Berlin", country: "Germany" }, to: { code: "BER", city: "Berlin", country: "Germany" } },
+    { from: { code: "FRA", city: "Frankfurt", country: "Germany" }, to: { code: "BER", city: "Berlin", country: "Germany" } },
+    { from: { code: "BER", city: "Berlin", country: "Germany" }, to: { code: "MUC", city: "Munich", country: "Germany" } },
   ],
   ES: [
-    { from: { code: "MAD", city: "Madrid", country: "Spain" }, to: { code: "MAD", city: "Madrid", country: "Spain" } },
-    { from: { code: "BCN", city: "Barcelona", country: "Spain" }, to: { code: "BCN", city: "Barcelona", country: "Spain" } },
+    { from: { code: "MAD", city: "Madrid", country: "Spain" }, to: { code: "BCN", city: "Barcelona", country: "Spain" } },
+    { from: { code: "BCN", city: "Barcelona", country: "Spain" }, to: { code: "MAD", city: "Madrid", country: "Spain" } },
   ],
   IT: [
-    { from: { code: "FCO", city: "Rome", country: "Italy" }, to: { code: "FCO", city: "Rome", country: "Italy" } },
-    { from: { code: "MXP", city: "Milan", country: "Italy" }, to: { code: "MXP", city: "Milan", country: "Italy" } },
+    { from: { code: "FCO", city: "Rome", country: "Italy" }, to: { code: "MXP", city: "Milan", country: "Italy" } },
+    { from: { code: "MXP", city: "Milan", country: "Italy" }, to: { code: "FCO", city: "Rome", country: "Italy" } },
   ],
   ZA: [
-    { from: { code: "CPT", city: "Cape Town", country: "South Africa" }, to: { code: "CPT", city: "Cape Town", country: "South Africa" } },
-    { from: { code: "JNB", city: "Johannesburg", country: "South Africa" }, to: { code: "JNB", city: "Johannesburg", country: "South Africa" } },
+    { from: { code: "CPT", city: "Cape Town", country: "South Africa" }, to: { code: "JNB", city: "Johannesburg", country: "South Africa" } },
+    { from: { code: "JNB", city: "Johannesburg", country: "South Africa" }, to: { code: "CPT", city: "Cape Town", country: "South Africa" } },
   ],
-  KE: [{ from: { code: "NBO", city: "Nairobi", country: "Kenya" }, to: { code: "NBO", city: "Nairobi", country: "Kenya" } }],
-  GH: [{ from: { code: "ACC", city: "Accra", country: "Ghana" }, to: { code: "ACC", city: "Accra", country: "Ghana" } }],
+  KE: [
+    { from: { code: "NBO", city: "Nairobi", country: "Kenya" }, to: { code: "MBA", city: "Mombasa", country: "Kenya" } }
+  ],
+  GH: [
+    { from: { code: "ACC", city: "Accra", country: "Ghana" }, to: { code: "KMS", city: "Kumasi", country: "Ghana" } }
+  ],
   IN: [
-    { from: { code: "DEL", city: "Delhi", country: "India" }, to: { code: "DEL", city: "Delhi", country: "India" } },
-    { from: { code: "BOM", city: "Mumbai", country: "India" }, to: { code: "BOM", city: "Mumbai", country: "India" } },
+    { from: { code: "DEL", city: "Delhi", country: "India" }, to: { code: "BOM", city: "Mumbai", country: "India" } },
+    { from: { code: "BOM", city: "Mumbai", country: "India" }, to: { code: "DEL", city: "Delhi", country: "India" } },
   ],
-  AU: [{ from: { code: "SYD", city: "Sydney", country: "Australia" }, to: { code: "SYD", city: "Sydney", country: "Australia" } }],
-  CA: [{ from: { code: "YYZ", city: "Toronto", country: "Canada" }, to: { code: "YYZ", city: "Toronto", country: "Canada" } }],
+  AU: [
+    { from: { code: "SYD", city: "Sydney", country: "Australia" }, to: { code: "MEL", city: "Melbourne", country: "Australia" } }
+  ],
+  CA: [
+    { from: { code: "YYZ", city: "Toronto", country: "Canada" }, to: { code: "YUL", city: "Montreal", country: "Canada" } }
+  ],
 };
 
 const DEFAULT_CAR_ROUTES = CAR_ROUTES_BY_GEO.GB;
-const CAR_CACHE_KEY = "car_rentals_grid_v2";
+// 🚨 Changed cache key to v3 to force fresh data
+const CAR_CACHE_KEY = "car_rentals_grid_v3"; 
 const CAR_CACHE_TTL_MS = 30 * 60 * 1000;
 
 // ─── Geo detection ─────────────────────────────────────────────────────
@@ -343,8 +355,9 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
               seats: item.seats || item.vehicle?.seats?.[0]?.count || 4,
               baggage: baggageCount,
               transmission: item.transmission || t("cars.automatic"),
-              pickupLocation: item.pickupLocation || route.from.code,
-              dropoffLocation: item.dropoffLocation || route.to.code,
+              // 🚨 FORCE ROUTE CODES AND LOCATION (Fix applied here)
+              pickupLocation: route.from.code, 
+              dropoffLocation: route.to.code, 
               pickupDateTime: item.pickupDateTime || pickupISO,
               dropoffDateTime: item.dropoffDateTime || dropoffISO,
               duration: formatIsoDuration(item.duration) || "3 days",
@@ -352,7 +365,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
               isRefundable: item.isRefundable ?? true,
               cityName: route.from.city,
               locationCode: route.from.code,
-              location: `${route.from.city} → ${route.to.city}`,
+              location: `${route.from.city} → ${route.to.city}`, // Forces distinct cities
               description:
                 item.subtitle ||
                 `Premium ${vehicleDesc} from ${route.from.city} to ${route.to.city}`,
@@ -511,6 +524,7 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
     const pickupTime = "10:00";
     const dropoffTime = "10:00";
 
+    // Safely parse the string because it's strictly controlled now
     let pickupCity = car.cityName || "London";
     let dropoffCity = "Paris";
     if (car.location && car.location.includes("→")) {
@@ -521,8 +535,8 @@ const CarRentals: React.FC<CarRentalsProps> = ({ onSearch }) => {
       }
     }
 
-    const pickupCode = car.pickupLocation || "LHR";
-    const dropoffCode = car.dropoffLocation || "CDG";
+    const pickupCode = car.pickupLocation;
+    const dropoffCode = car.dropoffLocation;
 
     if (onSearch) {
       onSearch({

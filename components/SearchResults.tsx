@@ -771,18 +771,29 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
     let totalHours = 0;
     let totalMinutes = 0;
 
-    const daysMatch = duration.match(/P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?/);
-    if (daysMatch) {
-      const days = parseInt(daysMatch[1]) || 0;
-      const hours = parseInt(daysMatch[2]) || 0;
-      const minutes = parseInt(daysMatch[3]) || 0;
-      totalHours = (days * 24) + hours;
-      totalMinutes = minutes;
-    } else {
-      const hours = duration.match(/(\d+)H/);
-      const minutes = duration.match(/(\d+)M/);
-      totalHours = hours ? parseInt(hours[1]) : 0;
-      totalMinutes = minutes ? parseInt(minutes[1]) : 0;
+    // ✅ Handle Wakanow format: "14:05:00" (could be "33:20:00" for long flights)
+    if (duration.includes(':')) {
+      const parts = duration.split(':');
+      if (parts.length >= 2) {
+        totalHours = parseInt(parts[0], 10) || 0;
+        totalMinutes = parseInt(parts[1], 10) || 0;
+      }
+    } 
+    // ✅ Handle ISO format: "PT14H5M"
+    else {
+      const daysMatch = duration.match(/P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?/);
+      if (daysMatch) {
+        const days = parseInt(daysMatch[1]) || 0;
+        const hours = parseInt(daysMatch[2]) || 0;
+        const minutes = parseInt(daysMatch[3]) || 0;
+        totalHours = (days * 24) + hours;
+        totalMinutes = minutes;
+      } else {
+        const hours = duration.match(/(\d+)H/);
+        const minutes = duration.match(/(\d+)M/);
+        totalHours = hours ? parseInt(hours[1]) : 0;
+        totalMinutes = minutes ? parseInt(minutes[1]) : 0;
+      }
     }
 
     if (totalHours === 0 && totalMinutes === 0) return '';
@@ -904,29 +915,9 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
             airlineLogo = `https://images.wakanow.com/Images/flight-logos/${outboundFlight.Airline}.gif`;
           }
 
-          let durationDisplay = outboundFlight.TripDuration || '';
-          if (durationDisplay) {
-            const parts = durationDisplay.split(':');
-            if (parts.length === 3) {
-              const hours = parseInt(parts[0]);
-              const minutes = parseInt(parts[1]);
-              if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
-              else if (hours > 0) durationDisplay = `${hours}h`;
-              else if (minutes > 0) durationDisplay = `${minutes}m`;
-            }
-          }
-
-          let returnDurationDisplay = '';
-          if (returnFlight?.TripDuration) {
-            const parts = returnFlight.TripDuration.split(':');
-            if (parts.length === 3) {
-              const hours = parseInt(parts[0]);
-              const minutes = parseInt(parts[1]);
-              if (hours > 0 && minutes > 0) returnDurationDisplay = `${hours}h ${minutes}m`;
-              else if (hours > 0) returnDurationDisplay = `${hours}h`;
-              else if (minutes > 0) returnDurationDisplay = `${minutes}m`;
-            }
-          }
+          // ✅ FIXED: Use formatDuration which correctly handles Wakanow's "33:20:00" format
+          const durationDisplay = formatDuration(outboundFlight.TripDuration);
+          const returnDurationDisplay = returnFlight ? formatDuration(returnFlight.TripDuration) : '';
 
           let baggageText = '';
           if (outboundFlight.FreeBaggage) {
@@ -1489,6 +1480,15 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
     } else if (sortOption === 'fastest') {
       const getMinutes = (durationStr?: string) => {   
         if (!durationStr) return Infinity;
+        
+        // ✅ Handle Wakanow HH:MM:SS format
+        if (durationStr.includes(':')) {
+          const parts = durationStr.split(':');
+          if (parts.length >= 2) {
+            return (parseInt(parts[0], 10) * 60) + parseInt(parts[1], 10);
+          }
+        }
+
         let hours = 0;
         let minutes = 0;
         const hoursMatch = durationStr.match(/(\d+)h/);
@@ -1520,6 +1520,16 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
     
     const getMinutes = (durationStr?: string) => {   
       if (!durationStr) return Infinity;
+
+      
+      if (durationStr.includes(':')) {
+        const parts = durationStr.split(':');
+        if (parts.length >= 2) {
+          return (parseInt(parts[0], 10) * 60) + parseInt(parts[1], 10);
+        }
+      }
+      
+      // ✅ Handle ISO format
       let hours = 0, minutes = 0;
       const h = durationStr.match(/(\d+)h/);
       const m = durationStr.match(/(\d+)m/);
@@ -1532,7 +1542,6 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
       getMinutes(flight.duration) < getMinutes(min.duration) ? flight : min
     );
   }, [filteredAndSortedFlights]);
-
 
   const toggleAirlineFilter = (airline: string) => {
     setSelectedAirlineFilters(prev => {
@@ -2740,10 +2749,10 @@ const hotelFilterOptions = useMemo(() => {
                 );
               })
             ) : (
-              // ✅ Round Trip or One-way: Show outbound and return
+            
               <>
-                {/* Outbound */}
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                                {/* Outbound */}
+                                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold text-gray-400 uppercase">
                       {isRoundTrip ? 'Depart' : 'Depart'}
@@ -2783,8 +2792,8 @@ const hotelFilterOptions = useMemo(() => {
                   </div>
                 </div>
   
-                {/* Return */}
-                {flight.returnFlight && flight.returnFlight.departureTime && (
+                                {/* Return */}
+                                {flight.returnFlight && flight.returnFlight.departureTime && (
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-bold text-gray-400 uppercase">Return</span>
