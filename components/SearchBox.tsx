@@ -1741,9 +1741,19 @@ useEffect(() => {
             </div>
           )
         );
-        const renderCarTravellerDropdown = () => (
-          showCarTravellerDropdown && (
-            <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-50 animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+        const renderCarTravellerDropdown = () => {
+          if (!showCarTravellerDropdown || !carTravellerRef.current) return null;
+          const rect = carTravellerRef.current.getBoundingClientRect();
+
+          return (
+            <div 
+              className="fixed w-64 bg-white rounded-xl shadow-2xl border border-gray-100 p-5 z-[9999] animate-in fade-in slide-in-from-top-2" 
+              style={{
+                top: rect.bottom + 6,
+                left: Math.max(rect.right - 256, 12) // Align right edge
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <div><span className="block font-bold text-gray-800 text-sm">{t('search.passengers')}</span></div>
@@ -1756,8 +1766,8 @@ useEffect(() => {
                 <button type="button" onClick={() => setShowCarTravellerDropdown(false)} className="w-full py-2.5 bg-[#33a8da] text-white rounded-lg font-bold text-sm hover:bg-[#2c98c7] transition-colors">{t('search.done')}</button>
               </div>
             </div>
-          )
-        );
+          );
+        };
 
         const renderRoomDropdown = () => (
           showRoomDropdown && (
@@ -1869,9 +1879,20 @@ useEffect(() => {
           );
         };
         
-        const renderHotelLocationDropdown = () => (
-          showHotelLocationDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-50">
+        const renderHotelLocationDropdown = () => {
+          if (!showHotelLocationDropdown || !hotelLocationRef.current) return null;
+          const rect = hotelLocationRef.current.getBoundingClientRect();
+
+          return (
+            <div 
+              className="fixed bg-white rounded-xl shadow-2xl border border-gray-200 max-h-60 overflow-y-auto z-[9999]"
+              style={{
+                top: rect.bottom + 6,
+                left: rect.left,
+                width: Math.max(rect.width, 320),
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
               {loadingHotelSuggestions ? (
                 <div className="px-4 py-3 text-center text-gray-500">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#33a8da] mx-auto"></div>
@@ -1911,52 +1932,54 @@ useEffect(() => {
                       </div>
                     </button>
                   ))}
-                  {hotelLocationSuggestions.length >= 6 && (
-                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                      <div className="text-xs text-center text-gray-500">
-                        {t('search.moreHint')}
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
             </div>
-          )
-        );
+          );
+        };
 
         const renderCarLocationDropdown = (
           suggestions: CarLocationSuggestion[],
           type: 'pickUp' | 'dropOff'
-        ) => (
-          <div
-            className={`absolute top-full mt-1 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-80 overflow-y-auto z-[120] w-[360px] sm:w-[440px] ${
-              type === 'dropOff' ? 'right-0' : 'left-0'
-            }`}
-            style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.18)' }}
-          >
-            {suggestions.map((location, idx) => (
-              <button
-                key={`${location.code}-${idx}`}
-                type="button"
-                className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group"
-                onClick={() => handleCarLocationSelect(location, type)}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${
-                    location.type === 'city' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
-                  }`}>
-                    {location.code}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-gray-900 truncate">{location.city}, {location.country}</div>
-                    <div className="text-xs text-gray-500 truncate">{location.name}</div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        );
+        ) => {
+          const targetRef = type === 'pickUp' ? carPickUpRef.current : carDropOffRef.current;
+          if (!targetRef) return null;
+          const rect = targetRef.getBoundingClientRect();
 
+          return (
+            <div
+              className="fixed bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-80 overflow-y-auto z-[9999] w-[360px] sm:w-[440px]"
+              style={{
+                top: rect.bottom + 6,
+                left: type === 'dropOff' ? Math.max(rect.right - 440, 12) : rect.left,
+                boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {suggestions.map((location, idx) => (
+                <button
+                  key={`${location.code}-${idx}`}
+                  type="button"
+                  className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 group"
+                  onClick={() => handleCarLocationSelect(location, type)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${
+                      location.type === 'city' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                    }`}>
+                      {location.code}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-gray-900 truncate">{location.city}, {location.country}</div>
+                      <div className="text-xs text-gray-500 truncate">{location.name}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          );
+        };
+        
         const renderCarDateTimePicker = () => {
           if (!showCarCalendar) return null;
         
@@ -3046,7 +3069,6 @@ useEffect(() => {
     {renderCarDateTimePicker()}
   </div>
 )}
-       
               </form>
             </div>
 

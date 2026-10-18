@@ -430,7 +430,7 @@ export default function ServicesPageContent({
                 </Link>
 
                 <Link
-                  href="/book"
+                  href="/search"
                   className="inline-flex items-center justify-center px-10 py-5 border-2 border-white text-white font-semibold rounded-full hover:bg-white hover:text-[#001f3f] transform hover:scale-105 transition-all duration-300 shadow-xl text-lg"
                 >
                   {t("services.cta.book")}
