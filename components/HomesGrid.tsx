@@ -59,9 +59,6 @@ interface HomesGridProps {
 }
 
 // ─── Base currency we request from the API ─────────────────────────────
-// We request everything in a stable base and convert client-side, exactly
-// like CarRentals does. This guarantees the displayed currency always
-// matches whatever the user selects in the language/currency switcher.
 const BASE_CURRENCY = "GBP";
 
 // ─── City mixes ────────────────────────────────────────────────────────
@@ -300,8 +297,6 @@ function parseRoomName(firstOffer: any): string {
 }
 
 // ─── Map Amadeus HotelOffer → HotelDisplay ─────────────────────────────
-// NOTE: this now stores the RAW price + the SOURCE currency from the API.
-// Conversion to the user's currency happens afterwards in an async step.
 function mapOfferToDisplay(
   offer: any,
   index: number,
@@ -321,7 +316,6 @@ function mapOfferToDisplay(
     originalPrice = parseFloat(price.original_total);
   }
 
-  // ✅ FIX: capture the source currency that the API actually quoted in
   const sourceCurrency = (price.currency || BASE_CURRENCY).toUpperCase();
 
   const isRefundable =
@@ -379,7 +373,6 @@ function mapOfferToDisplay(
     distanceUnit,
     price: totalPrice,
     originalPrice,
-    // ✅ FIX: store the true source currency for the conversion step
     currency: sourceCurrency,
     roomCategory: room.category || 'Room',
     roomName,
@@ -410,7 +403,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   subtitle,
   onSearch,
 }) => {
-  // ✅ FIX: pull the reactive currency + converter from context, same as CarRentals
   const { t, currency: userCurrency, convertPrice } = useLanguage();
   const router = useRouter();
 
@@ -420,11 +412,9 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   const [savedHotelIds, setSavedHotelIds] = useState<Set<string>>(new Set());
   const savedItemIdMapRef = useRef<Map<string, string>>(new Map());
 
-  // ✅ FIX: derive code + symbol from the reactive context (no more static map)
   const userCurrencyCode = userCurrency?.code || "NGN";
   const userCurrencySymbol = userCurrency?.symbol || "₦";
 
-  // ─── Prop-driven state ────────────────────────────────────────────
   useEffect(() => {
     if (propHotels && propHotels.length > 0) {
       setHotels(propHotels);
@@ -432,7 +422,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     }
   }, [propHotels]);
 
-  // ─── Saved items ──────────────────────────────────────────────────
   useEffect(() => {
     const loadSaved = async () => {
       try {
@@ -465,9 +454,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     loadSaved();
   }, []);
 
-  // ─── Trending fetch ───────────────────────────────────────────────
-  // ✅ FIX: userCurrencyCode & convertPrice are dependencies so a currency
-  //         change triggers a re-fetch with the new cache key.
   useEffect(() => {
     if (propHotels && propHotels.length > 0) return;
 
@@ -484,11 +470,20 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       }
 
       const mix = pickCityMix(geo);
-      const mixKey = mix.join('-');
 
-      // ✅ FIX: include the user's currency in the cache key.
-      //         Switching currency now invalidates the cache and re-fetches.
-      const cacheKey = `homes_grid_real_v5_${mixKey}_${userCurrencyCode}`;
+      const BACKUP_CITIES: Record<string, string[]> = {
+        NG: ['LOS', 'ABV', 'DXB', 'LON', 'CPT', 'ACC'],
+        GB: ['LON', 'DXB', 'PAR', 'NYC', 'IST'],
+        US: ['NYC', 'LON', 'DXB', 'MIA', 'PAR'],
+      };
+      const DEFAULT_BACKUPS = ['DXB', 'LON', 'PAR', 'NYC', 'SIN', 'IST'];
+
+      const backupPool = (geo && BACKUP_CITIES[geo]) || DEFAULT_BACKUPS;
+      const fullMix = Array.from(new Set([...mix, ...backupPool]));
+
+      const mixKey = fullMix.join('-');
+      // 🟢 Bumped to v8 to invalidate old cached data
+      const cacheKey = `homes_grid_real_v8_${mixKey}_${userCurrencyCode}`;
 
       console.log('🌍 Hotel mix:', { geo: geo || 'unknown', mix, cacheKey });
 
@@ -504,7 +499,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         const { checkIn, checkOut } = getDefaultDates();
 
         const results = await Promise.all(
-          mix.map(async (cityCode) => {
+          fullMix.map(async (cityCode) => {
             try {
               const r = await api.searchHotelsAmadeus({
                 cityCode,
@@ -512,8 +507,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 checkOutDate: checkOut,
                 adults: 2,
                 roomQuantity: 1,
-                // ✅ FIX: always request in a stable base currency, then convert
-                //         client-side (matches CarRentals behaviour).
                 currency: BASE_CURRENCY,
                 bestRateOnly: true,
                 page: 1,
@@ -564,8 +557,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           mapOfferToDisplay(offer, i, city),
         );
 
-        // ✅ FIX: convert raw prices → user's currency (like CarRentals).
-        //         Runs in parallel; failures fall back to the raw price.
         const converted = await Promise.all(
           mapped.map(async (hotel) => {
             if (!hotel.price || hotel.price <= 0) return hotel;
@@ -585,10 +576,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 typeof newPrice === 'number' && newPrice > 0
                   ? newPrice
                   : hotel.price;
-
-              console.log(
-                `💱 Hotel ${hotel.name}: ${hotel.price} ${srcCurrency} → ${safePrice.toFixed(0)} ${userCurrencyCode}`,
-              );
 
               return {
                 ...hotel,
@@ -611,12 +598,10 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
         if (cancelled) return;
 
-        setHotels(converted);
-        console.log('✅ Loaded', converted.length, 'hotels in', userCurrencyCode);
-
-        // ─── Images ──────────────────────────────────────────────────
-        const imageResults = await Promise.all(
-          collected.map(async ({ offer }) => {
+        // ─── Fetch images + filter in one pass ───────────────────────
+        const hotelsWithImages = await Promise.all(
+          converted.map(async (hotel, idx) => {
+            const offer = collected[idx].offer;
             const hotelId = offer.hotel?.hotelId;
             const hotelName = offer.hotel?.name || '';
             if (!hotelId) return null;
@@ -627,18 +612,45 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                 { method: 'GET' },
               );
 
-              const firstImage =
-                imgResponse?.data?.images?.[0]?.url ||
-                imgResponse?.data?.[0]?.url ||
-                imgResponse?.images?.[0]?.url ||
-                null;
+              // Reject if backend explicitly says no images
+              if (
+                Array.isArray(imgResponse?.data?.images) &&
+                imgResponse.data.images.length === 0
+              ) {
+                console.warn(`🚫 Empty images array for ${hotelName}`);
+                return null;
+              }
 
-              const looksValid =
-                typeof firstImage === 'string' &&
-                firstImage.startsWith('http') &&
-                firstImage.length > 20;
+              const candidates = [
+                imgResponse?.data?.images?.[0]?.url,
+                imgResponse?.data?.[0]?.url,
+                imgResponse?.images?.[0]?.url,
+                imgResponse?.data?.result?.images?.[0]?.url,
+                imgResponse?.data?.photos?.[0]?.url,
+                imgResponse?.data?.[0]?.imageUrl,
+                imgResponse?.data?.data?.[0]?.url,
+              ].filter((u): u is string => typeof u === 'string' && u.length > 0);
 
-              return looksValid ? firstImage : null;
+              // Reject placeholder URLs
+              const firstImage = candidates.find((u) => {
+                const lower = u.toLowerCase();
+                if (!u.startsWith('http')) return false;
+                if (
+                  lower.includes('placeholder') ||
+                  lower.includes('exterior') ||
+                  lower.includes('default') ||
+                  lower.includes('dummy') ||
+                  lower.includes('via.placeholder')
+                ) return false;
+                return true;
+              }) || null;
+
+              if (!firstImage) {
+                console.warn(`🚫 No valid image returned for ${hotelName}`);
+                return null;
+              }
+              
+              return { ...hotel, image: firstImage };
             } catch (err) {
               console.warn(`Image fetch failed for ${hotelName}`, err);
               return null;
@@ -646,27 +658,22 @@ const HomesGrid: React.FC<HomesGridProps> = ({
           }),
         );
 
-        if (cancelled) return;
+        const finalHotels = hotelsWithImages.filter(
+          (h): h is HotelDisplay => h !== null,
+        );
 
-        setHotels((prev) => {
-          const withImages = prev.map((h, idx) => ({
-            ...h,
-            image: imageResults[idx] || '',
-          }));
+        console.log(
+          `🖼️ Kept ${finalHotels.length}/${converted.length} hotels with images`,
+        );
 
-          const sorted = [
-            ...withImages.filter((h) => h.image),
-            ...withImages.filter((h) => !h.image),
-          ];
-
-          writeCache(cacheKey, {
-            hotels: sorted,
-            timestamp: Date.now(),
-            currency: userCurrencyCode,
-          });
-
-          return sorted;
+        writeCache(cacheKey, {
+          hotels: finalHotels,
+          timestamp: Date.now(),
+          currency: userCurrencyCode,
         });
+
+        setHotels(finalHotels);
+
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load trending hotels:', err);
@@ -680,7 +687,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
     return () => {
       cancelled = true;
     };
-    // ✅ FIX: added userCurrencyCode + convertPrice so switching currency refetches
   }, [propHotels, userCurrencyCode, convertPrice]);
 
   const toggleSaveHotel = async (hotel: HotelDisplay) => {
@@ -748,7 +754,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
       checkOutDate,
       travellers: { adults: 2, children: 0 },
       rooms: 1,
-      currency: userCurrencyCode, // ✅ FIX: send the reactive currency
+      currency: userCurrencyCode,
     };
 
     if (onSearch) {
@@ -762,13 +768,12 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         checkOut: checkOutDate,
         guests: '2',
         rooms: '1',
-        currency: userCurrencyCode, // ✅ FIX
+        currency: userCurrencyCode,
       });
       router.push(`/search?${params.toString()}`);
     }
   };
 
-  // ✅ FIX: derive symbol from reactive context (no static CURRENCY_SYMBOLS map)
   const symbol = userCurrencySymbol;
   const formatPrice = (p: number) =>
     `${symbol}${p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -781,7 +786,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
   const displaySubtitle =
     subtitle || 'From castles and villas to boats and igloos, we have it all';
 
-  // ─── Loading skeleton ────────────────────────────────────────────
   if (isLoading) {
     return (
       <section className="px-4 md:px-8 lg:px-16 pt-8 pb-0">
@@ -825,7 +829,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
 
   return (
     <section className="px-4 md:px-8 lg:px-16 pt-8 pb-4">
-      {/* Header */}
       <div className="flex justify-between items-end mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{displayTitle}</h2>
@@ -842,7 +845,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
         </button>
       </div>
 
-      {/* Carousel */}
       <div className="relative group/carousel">
         <button
           onClick={() => {
@@ -871,6 +873,7 @@ const HomesGrid: React.FC<HomesGridProps> = ({
             return (
               <div
                 key={hotel.id}
+                data-hotel-card
                 onClick={() => handleHotelClick(hotel)}
                 className="group cursor-pointer bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col snap-start flex-shrink-0"
                 style={{
@@ -878,35 +881,19 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                   minWidth: '320px',
                 }}
               >
-                {/* Image */}
                 <div className="relative aspect-[16/10] overflow-hidden bg-gray-100">
-                  {hotel.image ? (
-                    <img
-                      src={hotel.image}
-                      alt={hotel.name}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-                      <svg
-                        className="w-12 h-12 text-gray-400"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={1.2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 11h.01M15 11h.01M9 15h.01M15 15h.01"
-                        />
-                      </svg>
-                    </div>
-                  )}
+                  <img
+                    src={hotel.image}
+                    alt={hotel.name}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    loading="lazy"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      const card = img.closest('[data-hotel-card]') as HTMLElement | null;
+                      if (card) card.style.display = 'none';
+                      else img.style.display = 'none';
+                    }}
+                  />
 
                   <button
                     className={`absolute top-3 right-3 w-9 h-9 rounded-full z-10 flex items-center justify-center transition backdrop-blur-md ${
@@ -940,7 +927,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                   </button>
                 </div>
 
-                {/* Content */}
                 <div className="p-4 flex flex-col">
                   {hotel.boardLabel && (
                     <div className="mb-1">
@@ -1014,7 +1000,6 @@ const HomesGrid: React.FC<HomesGridProps> = ({
                     )}
                   </div>
 
-                  {/* Price block */}
                   <div className="pt-3 mt-3 border-t border-gray-100">
                     <p className="text-[10px] text-gray-500 leading-tight">
                       Starting from

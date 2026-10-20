@@ -1,4 +1,3 @@
-// Create a new file: components/SearchFilters.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
