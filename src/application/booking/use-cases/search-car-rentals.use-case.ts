@@ -54,6 +54,17 @@ export class SearchCarRentalsUseCase {
     
     this.validateDate(pickupDate);
 
+    this.validateDifferentLocations({
+      startLocationCode,
+      endLocationCode,
+      startAddressLine,
+      startCityName,
+      startCountryCode,
+      endAddressLine,
+      endCityName,
+      endCountryCode,
+    });
+
     // Generate cache key
     const cacheKey = this.generateCacheKey({
       startLocationCode,
@@ -83,7 +94,7 @@ export class SearchCarRentalsUseCase {
 
       const transferRequest = this.buildTransferRequest({
         startLocationCode,
-        endLocationCode: endLocationCode || startLocationCode,
+        endLocationCode,
         startDateTime: formattedStartDateTime,
         transferType,
         passengers,
@@ -156,6 +167,52 @@ export class SearchCarRentalsUseCase {
     }
   }
 
+  private validateDifferentLocations(params: {
+    startLocationCode?: string;
+    endLocationCode?: string;
+    startAddressLine?: string;
+    startCityName?: string;
+    startCountryCode?: string;
+    endAddressLine?: string;
+    endCityName?: string;
+    endCountryCode?: string;
+  }) {
+    const normalize = (val?: string) => (val || '').trim().toLowerCase();
+  
+    const startCode = normalize(params.startLocationCode);
+    const endCode = normalize(params.endLocationCode);
+  
+    // Reject same IATA/location code (e.g. LOS -> LOS)
+    if (startCode && endCode && startCode === endCode) {
+      throw new BadRequestException(
+        `Pickup and drop-off locations cannot be the same (${params.startLocationCode}). Please provide a different destination.`,
+      );
+    }
+  
+    const hasStartAddr = !!(params.startAddressLine && params.startCityName && params.startCountryCode);
+    const hasEndAddr = !!(params.endAddressLine && params.endCityName && params.endCountryCode);
+  
+    if (hasStartAddr && hasEndAddr) {
+      const startAddrKey = [
+        normalize(params.startAddressLine),
+        normalize(params.startCityName),
+        normalize(params.startCountryCode),
+      ].join('|');
+  
+      const endAddrKey = [
+        normalize(params.endAddressLine),
+        normalize(params.endCityName),
+        normalize(params.endCountryCode),
+      ].join('|');
+  
+      if (startAddrKey === endAddrKey) {
+        throw new BadRequestException(
+          'Pickup and drop-off addresses cannot be the same. Please provide a different destination.',
+        );
+      }
+    }
+  }
+
   private buildTransferRequest(params: {
     startLocationCode?: string;
     endLocationCode?: string;
@@ -201,7 +258,7 @@ export class SearchCarRentalsUseCase {
       );
     }
 
-    // ✅ Handle end location (IATA or Address)
+   
     if (params.endLocationCode) {
       request.endLocationCode = params.endLocationCode;
     } else if (params.endAddressLine && params.endCityName && params.endCountryCode) {
@@ -211,12 +268,9 @@ export class SearchCarRentalsUseCase {
       if (params.endZip) {
         request.endZip = params.endZip;
       }
-    } else if (params.startLocationCode) {
-      // ✅ If no end provided, use start as round-trip
-      request.endLocationCode = params.startLocationCode;
     } else {
       throw new BadRequestException(
-        'Either endLocationCode or endAddressLine with endCityName and endCountryCode is required',
+        'Either endLocationCode or endAddressLine with endCityName and endCountryCode is required. Drop-off cannot be the same as pickup.',
       );
     }
 
@@ -224,7 +278,7 @@ export class SearchCarRentalsUseCase {
       request.duration = params.duration;
     }
 
-    // ✅ Vehicle filters
+
     if (params.vehicleCategory) {
       request.vehicleCategory = params.vehicleCategory;
     }

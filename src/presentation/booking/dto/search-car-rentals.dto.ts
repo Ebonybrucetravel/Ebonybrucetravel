@@ -5,7 +5,6 @@ import {
   Min,
   Max,
   IsOptional,
-  IsArray,
   IsEnum,
   IsNotEmpty,
   IsIn,
@@ -51,13 +50,13 @@ export class SearchCarRentalsDto {
     description: 'Pickup location (IATA code, e.g., CDG). Required if startAddressLine is not provided.',
     example: 'CDG',
   })
-  @IsOptional()
+  @ValidateIf(o => !o.startAddressLine && !o.startCityName && !o.startCountryCode)
   @IsString()
-  @ValidateIf(o => !o.startAddressLine)
+  @IsNotEmpty()
   startLocationCode?: string;
 
   @ApiPropertyOptional({
-    description: 'Drop-off location (IATA code). If not provided, same as pickup.',
+    description: 'Drop-off location (IATA code). Required unless end address fields are provided. Must differ from startLocationCode.',
     example: 'NCE',
   })
   @IsOptional()
@@ -70,27 +69,27 @@ export class SearchCarRentalsDto {
     description: 'Pickup address line. Required if startLocationCode is not provided.',
     example: 'Avenue de la Bourdonnais, 19',
   })
-  @IsOptional()
-  @IsString()
   @ValidateIf(o => !o.startLocationCode)
+  @IsString()
+  @IsNotEmpty()
   startAddressLine?: string;
 
   @ApiPropertyOptional({
     description: 'Pickup city name. Required if startLocationCode is not provided.',
     example: 'Paris',
   })
-  @IsOptional()
-  @IsString()
   @ValidateIf(o => !o.startLocationCode)
-  startCityName?: string;
+@IsString()
+@IsNotEmpty()
+startCityName?: string;
 
   @ApiPropertyOptional({
     description: 'Pickup country code (ISO 3166-1 alpha-2). Required if startLocationCode is not provided.',
     example: 'FR',
   })
-  @IsOptional()
-  @IsString()
   @ValidateIf(o => !o.startLocationCode)
+  @IsString()
+  @IsNotEmpty()
   startCountryCode?: string;
 
   @ApiPropertyOptional({
@@ -102,27 +101,30 @@ export class SearchCarRentalsDto {
   startZip?: string;
 
   @ApiPropertyOptional({
-    description: 'Drop-off address line.',
+    description: 'Drop-off address line. Required if endLocationCode is not provided.',
     example: 'Nice Côte d\'Azur Airport',
   })
-  @IsOptional()
+  @ValidateIf(o => !o.endLocationCode)
   @IsString()
+  @IsNotEmpty()
   endAddressLine?: string;
 
   @ApiPropertyOptional({
-    description: 'Drop-off city name.',
+    description: 'Drop-off city name. Required if endLocationCode is not provided.',
     example: 'Nice',
   })
-  @IsOptional()
+  @ValidateIf(o => !o.endLocationCode)
   @IsString()
+  @IsNotEmpty()
   endCityName?: string;
 
   @ApiPropertyOptional({
-    description: 'Drop-off country code (ISO 3166-1 alpha-2).',
+    description: 'Drop-off country code (ISO 3166-1 alpha-2). Required if endLocationCode is not provided.',
     example: 'FR',
   })
-  @IsOptional()
+  @ValidateIf(o => !o.endLocationCode)
   @IsString()
+  @IsNotEmpty()
   endCountryCode?: string;
 
   @ApiPropertyOptional({
@@ -176,10 +178,10 @@ export class SearchCarRentalsDto {
     description: 'Duration in ISO 8601 format (e.g., PT2H30M). Required for HOURLY transfer type.',
     example: 'PT2H30M',
   })
-  @IsOptional()
-  @IsString()
   @ValidateIf(o => o.transferType === TransferType.HOURLY)
-  duration?: string;
+@IsString()
+@IsNotEmpty()
+duration?: string;
 
   // ==================== CURRENCY ====================
 
