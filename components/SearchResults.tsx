@@ -3703,7 +3703,8 @@ const hotelFilterOptions = useMemo(() => {
 {/* Airlines Section */}
 <div className="mb-8">
   <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
-<div className="space-y-3 max-h-[300px] overflow-y-auto pr-5 -mr-2 [scrollbar-gutter:stable] [scrollbar-width:thin]">
+  
+  <div className="airlines-scroll space-y-3 max-h-[300px] overflow-y-auto pr-2">
     {airlineList.map(airline => (
       <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
         <div className="flex items-center gap-3">
@@ -3715,7 +3716,7 @@ const hotelFilterOptions = useMemo(() => {
           />
           <span className="text-sm text-gray-700 group-hover:text-gray-900">{airline.name}</span>
         </div>
-        <span className="text-xs text-gray-400">{airline.count}</span>
+        <span className="text-xs text-gray-400 shrink-0 pr-3">{airline.count}</span>
       </label>
     ))}
   </div>
