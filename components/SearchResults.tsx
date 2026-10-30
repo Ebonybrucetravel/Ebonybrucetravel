@@ -3703,7 +3703,7 @@ const hotelFilterOptions = useMemo(() => {
 {/* Airlines Section */}
 <div className="mb-8">
   <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
-  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 -mr-2 [scrollbar-gutter:stable]">
+<div className="space-y-3 max-h-[300px] overflow-y-auto pr-5 -mr-2 [scrollbar-gutter:stable] [scrollbar-width:thin]">
     {airlineList.map(airline => (
       <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
         <div className="flex items-center gap-3">
