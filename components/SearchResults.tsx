@@ -3703,42 +3703,34 @@ const hotelFilterOptions = useMemo(() => {
 {/* Airlines Section */}
 <div className="mb-8">
   <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
-  
-  <div 
-    className="space-y-3 max-h-[300px] overflow-y-auto"
-    style={{ 
-      scrollbarWidth: 'none', /* Firefox */
-      msOverflowStyle: 'none', /* IE/Edge */
-    }}
-  >
-   
-    <style>{`
-      .hide-native-scroll::-webkit-scrollbar {
-        display: none !important;
-      }
-    `}</style>
-    
-    <div className="hide-native-scroll space-y-3">
-      {airlineList.map(airline => (
-        <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={selectedAirlineFilters.has(airline.name)}
-              onChange={() => toggleAirlineFilter(airline.name)}
-              className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
-            />
-            <span className="text-sm text-gray-700 group-hover:text-gray-900">{airline.name}</span>
-          </div>
-          
-   
-          <span className="text-xs text-gray-400 shrink-0 pr-4">{airline.count}</span>
-        </label>
-      ))}
-    </div>
+
+  <style>{`
+    .airlines-hide-scroll::-webkit-scrollbar { display: none !important; }
+    .airlines-hide-scroll { scrollbar-width: none !important; -ms-overflow-style: none !important; }
+  `}</style>
+
+  <div className="airlines-hide-scroll space-y-3 max-h-[300px] overflow-y-auto pr-4">
+    {airlineList.map(airline => (
+      <label
+        key={airline.name}
+        className="flex items-center justify-between cursor-pointer group"
+      >
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={selectedAirlineFilters.has(airline.name)}
+            onChange={() => toggleAirlineFilter(airline.name)}
+            className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da]"
+          />
+          <span className="text-sm text-gray-700 group-hover:text-gray-900">
+            {airline.name}
+          </span>
+        </div>
+        <span className="text-xs text-gray-400 shrink-0">{airline.count}</span>
+      </label>
+    ))}
   </div>
-</div>
-       
+</div>       
         <div className="mb-8">
           <h3 className="font-bold text-gray-900 mb-4 text-base">Onward Journey</h3>
 
