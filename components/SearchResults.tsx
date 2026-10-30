@@ -3702,45 +3702,38 @@ const hotelFilterOptions = useMemo(() => {
 
 
 
-
-        {/* Airlines Section */}
+{/* Airlines Section */}
 <div className="mb-8">
   <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
 
-  <div
-    className="space-y-3 max-h-[300px] overflow-y-auto"
-    style={{
-      paddingRight: '24px',
-      scrollbarWidth: 'thin',
-      scrollbarColor: '#d1d5db transparent',
-    }}
-  >
-    {airlineList.map(airline => (
-      <label
-        key={airline.name}
-        className="flex items-center gap-3 cursor-pointer group"
-      >
-        <input
-          type="checkbox"
-          checked={selectedAirlineFilters.has(airline.name)}
-          onChange={() => toggleAirlineFilter(airline.name)}
-          className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da] shrink-0"
-        />
-        <span className="text-sm text-gray-700 group-hover:text-gray-900 flex-1 truncate">
-          {airline.name}
-        </span>
-        <span
-          className="text-xs text-gray-400 shrink-0"
-          style={{ marginRight: '20px' }}
-        >
-          {airline.count}
-        </span>
-      </label>
-    ))}
-  </div>
-</div>
+  <div className="relative">
+    {/* Custom scrollbar track — visible, controlled, and out of reach of the numbers */}
+    <div className="absolute top-0 bottom-0 right-0 w-1 bg-gray-200 rounded-full pointer-events-none" />
 
-        
+    {/* Scroll container: native scrollbar hidden via .airline-scroll in globals.css */}
+    <div className="airline-scroll space-y-3 max-h-[300px] overflow-y-auto pr-4">
+      {airlineList.map(airline => (
+        <label
+          key={airline.name}
+          className="flex items-center gap-3 cursor-pointer group"
+        >
+          <input
+            type="checkbox"
+            checked={selectedAirlineFilters.has(airline.name)}
+            onChange={() => toggleAirlineFilter(airline.name)}
+            className="rounded border-gray-300 text-[#33a8da] focus:ring-[#33a8da] shrink-0"
+          />
+          <span className="text-sm text-gray-700 group-hover:text-gray-900 flex-1 truncate">
+            {airline.name}
+          </span>
+          <span className="text-xs text-gray-400 shrink-0 w-6 text-right">
+            {airline.count}
+          </span>
+        </label>
+      ))}
+    </div>
+  </div>
+</div>        
         <div className="mb-8">
           <h3 className="font-bold text-gray-900 mb-4 text-base">Onward Journey</h3>
 
