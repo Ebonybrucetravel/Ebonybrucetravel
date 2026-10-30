@@ -3703,11 +3703,10 @@ const hotelFilterOptions = useMemo(() => {
 {/* Airlines Section */}
 <div className="mb-8">
   <h3 className="font-bold text-gray-900 mb-4 text-base">Airlines</h3>
-  
- 
-  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 -mr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300">
+
+  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-6 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-300">
     {airlineList.map(airline => (
-      <label key={airline.name} className="flex items-center justify-between cursor-pointer group pr-2">
+      <label key={airline.name} className="flex items-center justify-between cursor-pointer group">
         <div className="flex items-center gap-3">
           <input
             type="checkbox"
@@ -3717,8 +3716,8 @@ const hotelFilterOptions = useMemo(() => {
           />
           <span className="text-sm text-gray-700 group-hover:text-gray-900">{airline.name}</span>
         </div>
-     
-        <span className="text-xs text-gray-400 shrink-0">{airline.count}</span>
+    
+        <span className="text-xs text-gray-400 shrink-0 w-6 text-right">{airline.count}</span>
       </label>
     ))}
   </div>
