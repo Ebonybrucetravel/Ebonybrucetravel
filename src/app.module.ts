@@ -32,6 +32,7 @@ import { NewsletterModule } from './domains/newsletter/newsletter.module';
 // Application
 import { BookingApplicationModule } from './application/booking/booking-application.module';
 import { PaymentApplicationModule } from './application/payment/payment-application.module';
+import { AiModule } from './application/ai/ai.module';
 
 // Presentation
 import { AuthModule } from './presentation/auth/auth.module';
@@ -77,6 +78,7 @@ import { HotelImagesController } from './presentation/hotel-images/hotel-images.
     NewsletterModule,
     BookingApplicationModule,
     PaymentApplicationModule,
+    AiModule,
     AuthModule,
     AdminModule,
     UserModule,

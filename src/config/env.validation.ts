@@ -149,6 +149,18 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   WAKANOW_PASSWORD?: string;
+  
+  @IsString()
+  @IsNotEmpty()
+  GOOGLE_AI_API_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_URL: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_SERVICE_ROLE_KEY: string;
 }
 
 export function validate(config: Record<string, unknown>) {
