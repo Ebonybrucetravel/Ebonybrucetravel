@@ -75,10 +75,15 @@ export class AiService {
    */
   async ask(question: string) {
     try {
-      this.logger.log(`User asked: ${question}`);
+      // ✅ FIX: Extract the actual question to search Supabase with.
+      // If the frontend sent history, it looks like: "Previous conversation:\n...\nUser: <actual question>"
+      const lines = question.split('\n');
+      const actualQuestion = lines[lines.length - 1].replace(/^User:\s*/i, '').trim();
 
-      // 1. Convert the user's question into a vector
-      const queryEmbedding = await this.embeddings.embedQuery(question);
+      this.logger.log(`User asked: ${actualQuestion}`);
+
+      // 1. Convert the actual question into a vector
+      const queryEmbedding = await this.embeddings.embedQuery(actualQuestion);
 
       // 2. Search Supabase for the 5 most relevant text chunks
       const { data: matches, error } = await this.supabase.rpc('match_documents', {
@@ -103,6 +108,8 @@ export class AiService {
       }
 
       // 4. Build the final prompt for Gemini
+      // Note: We pass the ENTIRE 'question' here (which includes the history from the frontend)
+      // so Gemini can understand follow-up context.
       const prompt = `
 You are the official AI Travel Assistant for Ebony Bruce Travels.
 Your job is to answer customer questions accurately using ONLY the information provided in the "Context" below.
@@ -116,7 +123,7 @@ RULES:
 ${context}
 ------------------------------------
 
-User Question: ${question}
+${question}
 `;
 
       // 5. Ask Gemini
