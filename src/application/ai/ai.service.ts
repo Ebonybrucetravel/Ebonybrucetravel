@@ -20,7 +20,7 @@ export class AiService {
     this.llm = new ChatGoogleGenerativeAI({
       model: 'gemini-2.5-flash',
       apiKey: process.env.GOOGLE_AI_API_KEY,
-      temperature: 0.1, // Reduced slightly to 0.1 for even stricter adherence to the KB
+      temperature: 0.1, // Strict adherence to facts
     });
 
     this.supabase = createClient(
@@ -36,21 +36,23 @@ export class AiService {
     try {
       this.logger.log(`Starting ingestion for: ${sourceUrl}`);
 
-      // 1. Split the text into manageable chunks
-      // Note: We increased the chunk size slightly because your new KB has long, detailed sections.
+      // ✅ FIX 1: Split specifically by Markdown headers so chunks remain topic-focused
       const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1500, 
-        chunkOverlap: 200,
+        chunkSize: 1200, 
+        chunkOverlap: 150,
+        separators: ["\n### ", "\n## ", "\n# ", "\n\n", "\n", " "], 
       });
       const chunks = await splitter.splitText(text);
 
-      // 2. Loop through chunks, create embeddings, and insert into Supabase
       let insertedCount = 0;
       for (const chunk of chunks) {
-        const embedding = await this.embeddings.embedQuery(chunk);
+        // ✅ Add a prefix so the AI knows where this text came from
+        const contentToEmbed = `Source: ${sourceUrl}\n\n${chunk}`;
+        
+        const embedding = await this.embeddings.embedQuery(contentToEmbed);
 
         const { error } = await this.supabase.from('documents').insert({
-          content: chunk,
+          content: contentToEmbed,
           metadata: { source: sourceUrl },
           embedding: embedding,
         });
@@ -83,11 +85,11 @@ export class AiService {
       // 1. Convert the actual question into a vector
       const queryEmbedding = await this.embeddings.embedQuery(actualQuestion);
 
-      // 2. Search Supabase for the 5 most relevant text chunks
+      // 2. Search Supabase (✅ FIX 2: Lowered threshold to 0.25)
       const { data: matches, error } = await this.supabase.rpc('match_documents', {
         query_embedding: queryEmbedding,
-        match_threshold: 0.4, // Lowered slightly to 0.4 so it catches more relevant chunks from the detailed KB
-        match_count: 6, // Increased to 6 to get broader context
+        match_threshold: 0.25, 
+        match_count: 6, 
       });
 
       if (error) {
@@ -105,7 +107,7 @@ export class AiService {
         };
       }
 
-      // 4. Build the final prompt for Gemini, enforcing strict KB rules
+      // 4. Build the final prompt for Gemini
       const prompt = `
 You are the official AI Travel Assistant for Ebony Bruce Travels.
 Your job is to answer customer questions accurately using ONLY the information provided in the "Context" below.
@@ -117,7 +119,7 @@ Your job is to answer customer questions accurately using ONLY the information p
 4. If the exact answer is not contained in the Context, you must say exactly: "I don't have that information. Would you like me to connect you to a human agent?"
 5. Be polite, professional, and concise.
 
-=== LIVE USER CONTEXT (What they are looking at) ===
+=== LIVE USER CONTEXT ===
 ${frontendContext ? JSON.stringify(frontendContext) : 'No live context provided.'}
 
 === KNOWLEDGE BASE CONTEXT ===
