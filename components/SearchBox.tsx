@@ -1071,14 +1071,19 @@ const [draftMinute, setDraftMinute] = useState('00');
         }, []);
 
         useEffect(() => {
+          // If the URL already has data (like from the AI chat), do NOT overwrite the dates!
+          if (typeof window !== 'undefined' && window.location.search.includes('=')) {
+            return;
+          }
+        
           const tomorrow = new Date();
           tomorrow.setDate(tomorrow.getDate() + 1);
           const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
+        
           const nextWeek = new Date();
           nextWeek.setDate(nextWeek.getDate() + 4);
           const nextWeekStr = nextWeek.toISOString().split('T')[0];
-
+        
           setSegments(prev => {
             const newSegments = [...prev];
             if (!newSegments[0].date) {
@@ -1092,21 +1097,22 @@ const [draftMinute, setDraftMinute] = useState('00');
           setCarPickUpDate(tomorrowStr);
           setCarDropOffDate(nextWeekStr);
         }, []);
-
       
-      useEffect(() => {
-        if (activeTab === 'flights') {
-        
-          setTravellers({ adults: 1, children: 0, infants: 0 });
-          
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('additional_passengers');
-            console.log('🗑️ Cleared additional_passengers from sessionStorage');
+        useEffect(() => {
+          if (activeTab === 'flights') {
+            // ✅ Don't overwrite if the URL is telling us what to do
+            if (typeof window !== 'undefined' && window.location.search.includes('from=')) {
+              return;
+            }
+  
+            setTravellers({ adults: 1, children: 0, infants: 0 });
+            
+            if (typeof window !== 'undefined') {
+              sessionStorage.removeItem('additional_passengers');
+            }
           }
-          
-          console.log('🔄 Reset travellers for flights tab:', { adults: 1, children: 0, infants: 0 });
-        }
-      }, [activeTab]);
+        }, [activeTab]);
+
 
         useEffect(() => {
           if (segments[0].date && returnDate && segments[0].date > returnDate) {
@@ -1510,12 +1516,57 @@ const goToNextMonth = () => {
 
         useEffect(() => {
           const type = searchParams.get('type');
+          const urlParams = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search)
+            : searchParams;
 
-          if (type === 'hotels') {
+          // --- FLIGHTS AUTO-SEARCH ---
+          if (urlParams.get('from') || type === 'flights') {
+            const origin = urlParams.get('from') || urlParams.get('origin');
+            const destination = urlParams.get('to') || urlParams.get('destination');
+            const departureDate = urlParams.get('depart') || urlParams.get('departureDate');
+            const returnDateParam = urlParams.get('return') || urlParams.get('returnDate');
+            const adults = urlParams.get('adults');
+            const childrenParam = urlParams.get('children');
+            const infants = urlParams.get('infants');
+            if (origin && destination) {
+              const findAirportDisplay = (code: string) => {
+                const match = popularAirports.find((a) => a.code === code) || airportsWithCities.find((a) => a.code === code);
+                return match ? `${match.code} - ${match.name}, ${match.city}` : code;
+              };
 
+              setSegments([{
+                from: findAirportDisplay(origin),
+                to: findAirportDisplay(destination),
+                date: departureDate || ''
+              }]);
+              
+              if (returnDateParam) setReturnDate(returnDateParam);
+              if (adults) setTravellers({ adults: parseInt(adults), children: parseInt(childrenParam || '0'), infants: parseInt(infants || '0') });
 
+              // Fire the search
+              setTimeout(() => {
+                onSearch({
+                  type: 'flights',
+                  tripType: returnDateParam ? 'round-trip' : 'one-way',
+                  segments: [{ from: origin, to: destination, date: departureDate || '' }],
+                  returnDate: returnDateParam || undefined,
+                  passengers: {
+                    adults: parseInt(adults || '1'),
+                    children: parseInt(childrenParam || '0'),
+                    infants: parseInt(infants || '0')
+                  },
+                  cabinClass: searchParams.get('cabin') || searchParams.get('cabinClass') || 'economy',
+                  stopsFilter,
+                  maxPrice,
+                  currency: currency.code || 'USD'
+                });
+              }, 300);
+            }
+          }
+          // --- HOTELS AUTO-SEARCH ---
+          else if (type === 'hotels') {
             const location = searchParams.get('location');
-            const cityCode = searchParams.get('cityCode');
             const checkIn = searchParams.get('checkIn');
             const checkOut = searchParams.get('checkOut');
             const guests = searchParams.get('guests');
@@ -1524,78 +1575,62 @@ const goToNextMonth = () => {
             if (location) setHotelLocation(decodeURIComponent(location));
             if (checkIn) setCheckInDate(checkIn);
             if (checkOut) setCheckOutDate(checkOut);
-            if (guests) {
-              setTravellers(prev => ({ ...prev, adults: parseInt(guests) }));
-            }
+            if (guests) setTravellers(prev => ({ ...prev, adults: parseInt(guests) }));
             if (rooms_param) setRooms(parseInt(rooms_param));
 
-            const timer = setTimeout(() => {
-              const fakeEvent = { preventDefault: () => { } } as React.FormEvent;
-              handleSubmit(fakeEvent);
+            setTimeout(() => {
+              onSearch({
+                type: 'hotels',
+                location: decodeURIComponent(location || ''),
+                cityCode: getCityCode(decodeURIComponent(location || '')),
+                checkInDate: checkIn || '',
+                checkOutDate: checkOut || '',
+                travellers: { adults: parseInt(guests || '2'), children: 0 },
+                rooms: parseInt(rooms_param || '1'),
+                currency: currency.code || 'NGN',
+                provider: 'amadeus', radius: 100, limit: 100, getAll: true,
+              });
             }, 300);
-
-            return () => clearTimeout(timer);
-          } else if (type === 'car-rentals') {
-      
-
-            const location = searchParams.get('location');
-            const pickupCode = searchParams.get('pickupCode');
-            const dropoffCode = searchParams.get('dropoffCode');
-            const pickupDate = searchParams.get('pickupDate');
-            const dropoffDate = searchParams.get('dropoffDate');
-            const pickupTime = searchParams.get('pickupTime') || '10:00';
-            const dropoffTime = searchParams.get('dropoffTime') || '16:00';
-            const passengers = searchParams.get('passengers');
-
-            if (location) {
-              const parts = decodeURIComponent(location).split(' to ');
-              if (parts.length === 2) {
-                const fromMatch = airportsWithCities.find(a =>
-                  a.city.toLowerCase().includes(parts[0].toLowerCase()) ||
-                  a.code.toLowerCase() === parts[0].toUpperCase()
-                );
-                const toMatch = airportsWithCities.find(a =>
-                  a.city.toLowerCase().includes(parts[1].toLowerCase()) ||
-                  a.code.toLowerCase() === parts[1].toUpperCase()
-                );
-
-                if (fromMatch) {
-                  setCarPickUp(`${fromMatch.code} - ${fromMatch.name}, ${fromMatch.city}`);
-                }
-                if (toMatch) {
-                  setCarDropOff(`${toMatch.code} - ${toMatch.name}, ${toMatch.city}`);
-                }
-              }
-            }
+          } 
+                              // --- CARS AUTO-SEARCH ---
+          else if (urlParams.get('pickup') || type === 'car-rentals') {
+            const pickupCode = urlParams.get('pickup') || urlParams.get('pickupCode');
+            const dropoffCode = urlParams.get('dropoff') || urlParams.get('dropoffCode');
+            const pickupDate = urlParams.get('pickupDate');
+            const dropoffDate = urlParams.get('dropoffDate');
+            const pickupTime = urlParams.get('pickupTime') || '10:00';
+            const dropoffTime = urlParams.get('dropoffTime') || '10:00';
+            const passengers = urlParams.get('passengers');
 
             if (pickupCode) {
-              const match = airportsWithCities.find(a => a.code === pickupCode);
-              if (match) {
-                setCarPickUp(`${match.code} - ${match.name}, ${match.city}`);
-              }
+              const pMatch = airportsWithCities.find(a => a.code === pickupCode);
+              const dMatch = airportsWithCities.find(a => a.code === dropoffCode);
+              if (pMatch) setCarPickUp(`${pMatch.code} - ${pMatch.name}, ${pMatch.city}`);
+              if (dMatch) setCarDropOff(`${dMatch.code} - ${dMatch.name}, ${dMatch.city}`);
+              
+              if (pickupDate) setCarPickUpDate(pickupDate);
+              if (dropoffDate) setCarDropOffDate(dropoffDate);
+              if (pickupTime) setCarPickUpTime(pickupTime);
+              if (dropoffTime) setCarDropOffTime(dropoffTime);
+              if (passengers) setCarTravellers(parseInt(passengers));
+
+              setTimeout(() => {
+                onSearch({
+                  type: 'car-rentals',
+                  tripType: 'return',
+                  startLocationCode: pickupCode,
+                  endLocationCode: dropoffCode || pickupCode,
+                  startDateTime: `${pickupDate}T${pickupTime}:00`,
+                  endDateTime: `${dropoffDate}T${dropoffTime}:00`,
+                  passengers: parseInt(passengers || '2'),
+                  transferType, currency: 'GBP', vehicleCategory, vehicleCode,
+                  driverAge: '30-65', dropOffDifferent: false
+                });
+              }, 300);
             }
-
-            if (dropoffCode) {
-              const match = airportsWithCities.find(a => a.code === dropoffCode);
-              if (match) {
-                setCarDropOff(`${match.code} - ${match.name}, ${match.city}`);
-              }
-            }
-
-            if (pickupDate) setCarPickUpDate(pickupDate);
-            if (dropoffDate) setCarDropOffDate(dropoffDate);
-            if (pickupTime) setCarPickUpTime(pickupTime);
-            if (dropoffTime) setCarDropOffTime(dropoffTime);
-            if (passengers) setCarTravellers(parseInt(passengers));
-
-            const timer = setTimeout(() => {
-              const fakeEvent = { preventDefault: () => { } } as React.FormEvent;
-              handleSubmit(fakeEvent);
-            }, 300);
-
-            return () => clearTimeout(timer);
           }
         }, [searchParams]);
+        
 
         const triggerPicker = (e: React.MouseEvent<HTMLInputElement>) => {
           try {

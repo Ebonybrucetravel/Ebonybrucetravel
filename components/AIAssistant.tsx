@@ -580,21 +580,20 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
 
       const returnDate = new Date(new Date(departureDate).getTime() + 86400000 * 3).toISOString().split('T')[0];
 
+      // ✅ Changed to /flights
       const query = new URLSearchParams({
-        type: 'flights',
-        tripType: 'round-trip',
-        origin: originCode,
-        destination: destCode,
-        departureDate: departureDate,
-        returnDate: returnDate,
+        from: originCode,
+        to: destCode,
+        depart: departureDate,
+        return: returnDate,
         adults: String(params.passengers || 1),
         children: '0',
         infants: '0',
-        cabinClass: 'economy',
+        cabin: 'economy',
       });
 
       return {
-        href: `/search?${query.toString()}`,
+        href: `/flights?${query.toString()}`,
         label: `View all flights from ${originCode} to ${destCode}`,
       };
     } catch (e) {
@@ -697,10 +696,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
       const locationStr = `${pickupCity} to ${dropoffCity}`;
 
       const query = new URLSearchParams({
-        type: 'car-rentals',
-        location: locationStr,
-        pickupCode: pickupCode.toUpperCase(),
-        dropoffCode: dropoffCode.toUpperCase(),
+        pickup: pickupCode.toUpperCase(),
+        dropoff: dropoffCode.toUpperCase(),
         pickupDate: pickupDate,
         dropoffDate: dropoffDate,
         pickupTime: pickupTime,
@@ -709,7 +706,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
       });
 
       return {
-        href: `/search?${query.toString()}`,
+        href: `/cars?${query.toString()}`,
         label: `View car transfers from ${pickupCity} to ${dropoffCity}`,
       };
     } catch (e) {
@@ -1154,14 +1151,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
                 
                 {m.action && (
                   <button
-                    onClick={() => {
-                      if (m.action!.href === 'LIVE_CHAT') {
-                        triggerLiveChatHandoff();
-                      } else {
-                        onClose();
-                        window.location.href = m.action!.href;
-                      }
-                    }}
+                  onClick={() => {
+                    if (m.action!.href === 'LIVE_CHAT') {
+                      triggerLiveChatHandoff();
+                    } else {
+                      onClose();
+                      window.location.href = m.action!.href;   
+                    }
+                  }}
                     className="mt-3 w-full bg-[#32A6D7] hover:bg-[#2c98c7] text-white font-bold py-2.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2"
                   >
                     {m.action.label}
