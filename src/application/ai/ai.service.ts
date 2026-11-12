@@ -14,12 +14,13 @@ export class AiService {
     this.embeddings = new GoogleGenerativeAIEmbeddings({
       model: 'gemini-embedding-001',
       apiKey: process.env.GOOGLE_AI_API_KEY,
+      outputDimensionality: 768,
     });
 
     this.llm = new ChatGoogleGenerativeAI({
       model: 'gemini-2.5-flash',
       apiKey: process.env.GOOGLE_AI_API_KEY,
-      temperature: 0.2, // Keep it low so it sticks strictly to your website facts
+      temperature: 0.1, // Reduced slightly to 0.1 for even stricter adherence to the KB
     });
 
     this.supabase = createClient(
@@ -35,20 +36,19 @@ export class AiService {
     try {
       this.logger.log(`Starting ingestion for: ${sourceUrl}`);
 
-      // 1. Split the text into manageable chunks (1000 chars, with 100 chars overlap)
+      // 1. Split the text into manageable chunks
+      // Note: We increased the chunk size slightly because your new KB has long, detailed sections.
       const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 100,
+        chunkSize: 1500, 
+        chunkOverlap: 200,
       });
       const chunks = await splitter.splitText(text);
 
       // 2. Loop through chunks, create embeddings, and insert into Supabase
       let insertedCount = 0;
       for (const chunk of chunks) {
-        // Generate the vector (array of numbers) for this chunk
         const embedding = await this.embeddings.embedQuery(chunk);
 
-        // Save to Supabase 'documents' table
         const { error } = await this.supabase.from('documents').insert({
           content: chunk,
           metadata: { source: sourceUrl },
@@ -73,10 +73,8 @@ export class AiService {
   /**
    * Ask: Takes a user question, finds relevant website info, and generates an answer.
    */
-  async ask(question: string) {
+  async ask(question: string, frontendContext?: any) {
     try {
-      // ✅ FIX: Extract the actual question to search Supabase with.
-      // If the frontend sent history, it looks like: "Previous conversation:\n...\nUser: <actual question>"
       const lines = question.split('\n');
       const actualQuestion = lines[lines.length - 1].replace(/^User:\s*/i, '').trim();
 
@@ -88,8 +86,8 @@ export class AiService {
       // 2. Search Supabase for the 5 most relevant text chunks
       const { data: matches, error } = await this.supabase.rpc('match_documents', {
         query_embedding: queryEmbedding,
-        match_threshold: 0.5, // Adjust this if the AI is giving bad answers
-        match_count: 5,
+        match_threshold: 0.4, // Lowered slightly to 0.4 so it catches more relevant chunks from the detailed KB
+        match_count: 6, // Increased to 6 to get broader context
       });
 
       if (error) {
@@ -107,22 +105,26 @@ export class AiService {
         };
       }
 
-      // 4. Build the final prompt for Gemini
-      // Note: We pass the ENTIRE 'question' here (which includes the history from the frontend)
-      // so Gemini can understand follow-up context.
+      // 4. Build the final prompt for Gemini, enforcing strict KB rules
       const prompt = `
 You are the official AI Travel Assistant for Ebony Bruce Travels.
 Your job is to answer customer questions accurately using ONLY the information provided in the "Context" below.
 
-RULES:
-- Do NOT make up answers.
-- If the answer is not contained in the Context, you must say exactly: "I don't have that information. Would you like me to connect you to a human agent?"
-- Be polite and concise.
+=== CRITICAL RULES (STRICTLY ENFORCE) ===
+1. NEVER invent prices, availability, delivery dates, admission outcomes, visa outcomes, or booking confirmations.
+2. If the "Context" mentions flight booking but flags it as needing confirmation, you MUST tell the user that a human agent will need to confirm the flight scope.
+3. Do NOT provide immigration or visa representation. Tell the user we only provide educational consulting.
+4. If the exact answer is not contained in the Context, you must say exactly: "I don't have that information. Would you like me to connect you to a human agent?"
+5. Be polite, professional, and concise.
 
---- CONTEXT (WEBSITE INFORMATION) ---
+=== LIVE USER CONTEXT (What they are looking at) ===
+${frontendContext ? JSON.stringify(frontendContext) : 'No live context provided.'}
+
+=== KNOWLEDGE BASE CONTEXT ===
 ${context}
-------------------------------------
+===============================
 
+User Question:
 ${question}
 `;
 
@@ -131,12 +133,10 @@ ${question}
 
       return {
         answer: response.content,
-        // We return the sources so the frontend can see where it got the info
         sources: matches?.map((m: any) => m.metadata?.source) || [],
       };
     } catch (error: any) {
       this.logger.error(`Ask AI failed: ${error.message}`);
-      // Fallback response if the API crashes
       return {
         answer: "I'm having trouble connecting right now. Would you like me to connect you to a human agent?",
         sources: [],
