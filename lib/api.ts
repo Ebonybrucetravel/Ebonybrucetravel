@@ -5017,6 +5017,24 @@ export const supportApi = {
   },
 };
 
+export const aiApi = {
+  // Ask a question based on the website knowledge base (RAG)
+  ask: (question: string) => {
+    return request<{ answer: string; sources: string[] }>("/api/v1/ai/ask", {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    });
+  },
+
+  // (Optional) An admin endpoint to ingest new text into the database
+  ingest: (text: string, sourceUrl: string) => {
+    return request<{ success: boolean; chunksStored: number }>("/api/v1/ai/ingest", {
+      method: "POST",
+      body: JSON.stringify({ text, sourceUrl }),
+    });
+  }
+};
+
 
 
 // Utility functions
@@ -5775,6 +5793,7 @@ const api = {
   hotelApi,
   carApi,
   notificationApi,
+  aiApi,   
   supportApi,
   publicRequest,
 

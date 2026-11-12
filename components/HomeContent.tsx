@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
+import { useAuth } from '@/context/AuthContext';
 import Hero from '@/components/Hero';
 import Partners from '@/components/Partners';
 import ExclusiveOffers from '@/components/ExclusiveOffers';
@@ -11,11 +12,14 @@ import HomesGrid from '@/components/HomesGrid';
 import CarRentals from '@/components/CarRentals';
 import SpecializedServices from '@/components/SpecializedServices';
 import type { SearchParams } from '@/lib/types';
+import AIAssistant from '@/components/AIAssistant'; 
 
 export default function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const [isChatOpen, setIsChatOpen] = useState(true); 
+  const { user: authUser } = useAuth(); 
 
   const activeTab: 'flights' | 'hotels' | 'cars' =
     pathname?.includes('/hotels') ? 'hotels' :
@@ -261,6 +265,49 @@ const handleCarSearch = async (carData: any) => {
           </div>
         </div>
       )}
-      </>
+             {/* Global Loading Overlay for better UX */}
+      {(isHotelSearching || isCarSearching || isTrendingSearching) && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 border-4 border-[#33a8da] border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-700 font-semibold text-lg">
+              {isHotelSearching && 'Searching for hotels...'}
+              {isCarSearching && 'Searching for cars...'}
+              {isTrendingSearching && 'Finding best flights...'}
+            </p>
+            <p className="text-gray-400 text-sm">Please wait while we find the best options for you</p>
+          </div>
+        </div>
+      )}
+
+      {/* 👈 Floating Chat Button (Shows only when chat is closed) */}
+      {!isChatOpen && (
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="fixed bottom-6 right-6 z-[9999] bg-[#32A6D7] text-white p-4 rounded-full shadow-lg hover:bg-blue-600 transition-transform hover:scale-105 flex items-center justify-center"
+        >
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </button>
+      )}
+
+      {/* 👈 Conditionally Render the AI Assistant */}
+      {isChatOpen && (
+        <AIAssistant 
+          onClose={() => setIsChatOpen(false)} 
+          user={authUser ? {
+            name: authUser.name || 'User',
+            email: authUser.email || '',
+            token: authUser.token,
+            profilePicture: 
+              authUser.profilePicture || 
+              authUser.image || 
+              authUser.avatar,
+          } : null}
+        />
+      )}
+    </>
   );
 }
+ 

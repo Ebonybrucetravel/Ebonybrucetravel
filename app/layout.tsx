@@ -62,6 +62,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               s1.setAttribute('crossorigin','*');
               s0.parentNode.insertBefore(s1,s0);
             })();
+
+            // Hide the default Tawk.to widget on load
+            Tawk_API.onLoad = function(){
+              Tawk_API.hideWidget();
+            };
           `}
         </Script>
         {/* End of Tawk.to Script */}
