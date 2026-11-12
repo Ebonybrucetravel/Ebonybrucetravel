@@ -75,11 +75,11 @@ export class AiService {
 
       const queryEmbedding = await this.embeddings.embedQuery(actualQuestion);
 
-      // ✅ FIX: Set threshold to 0.0 to bypass Supabase filtering
+      // ✅ FIX: Set threshold to 0.0 and match_count to 15 to grab more context
       const { data: matches, error } = await this.supabase.rpc('match_documents', {
         query_embedding: queryEmbedding,
         match_threshold: 0.0, 
-        match_count: 6, 
+        match_count: 15, // 👈 Increased from 6 to 15
       });
 
       if (error) {
@@ -108,10 +108,12 @@ export class AiService {
 You are the official AI Travel Assistant for Ebony Bruce Travels.
 Your job is to answer customer questions accurately using ONLY the information provided in the "Context" below.
 
-=== CRITICAL RULES ===
+=== CRITICAL RULES (STRICTLY ENFORCE) ===
 1. NEVER invent prices, availability, delivery dates, admission outcomes, visa outcomes, or booking confirmations.
 2. If the exact answer is not contained in the Context, you must say exactly: "I don't have that information. Would you like me to connect you to a human agent?"
-3. Be polite, professional, and concise.
+3. Do NOT provide immigration or visa representation. Tell the user we only provide educational consulting.
+4. Be polite, professional, and concise.
+5. IF the user explicitly asks for a "human", "agent", "representative", or "person", you MUST reply with EXACTLY this phrase: "I will transfer you to a human agent now. Please hold on." (Do not add any other text).
 
 === KNOWLEDGE BASE CONTEXT ===
 ${context}

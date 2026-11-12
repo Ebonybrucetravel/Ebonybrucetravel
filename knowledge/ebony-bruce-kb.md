@@ -1,18 +1,9 @@
 # Ebony Bruce Travels — Business Knowledge Base
 
-> **Purpose:** Reference document for AI assistants, customer support, website management, marketing, email campaigns, and business-process automation.
->
-> **Primary website reviewed:** https://www.ebonybrucetravels.com/
->
-> **Research date:** 12 November 2026  
-> **Source note:** This document is based on information publicly displayed on the company's website and its indexed pages. Company claims are recorded as published, not independently verified. Where website pages conflict or omit operational details, the item is flagged for confirmation rather than guessed.
-
----
-
-## 1. Company overview
-
+## 1. Company Overview & Founder
 **Business name:** Ebony Bruce Travels / Ebony Bruce Travel Limited  
-**Website positioning:** Travel and related services for students, travellers, professionals, and other customers seeking travel, logistics, accommodation, or educational-consulting support.
+**Founder:** Ayobami Benjamin Bruce  
+**Positioning:** Travel and related services for students, travellers, professionals, and other customers seeking travel, logistics, accommodation, or educational-consulting support.
 
 The website presents the business as a provider of:
 - Tours and non-flight ticket operations
@@ -140,7 +131,7 @@ Until the company confirms the current operating model, an AI assistant should a
 ## 5. Team members listed on the website
 
 The About page lists:
-- **Bruce Ayobami Benjamin** — Business Support Officer
+- **Bruce Ayobami Benjamin** — Business Support Officer (Founder)
 - **Ojo Afolabi Sunday** — Customer Service Associate
 - **Adetunmbi Yetunde Oluwafunto** — Customer Service Associate
 - **James Olabisi Ogundele** — Business Operations Manager
