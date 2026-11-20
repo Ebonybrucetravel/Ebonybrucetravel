@@ -767,7 +767,12 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
 
   const formatDuration = (duration?: string): string => {
     if (!duration) return '';
-
+  
+  // ✅ Already formatted, but don't trust all-zero values
+if (/^\d+h(\s\d+m)?$/.test(duration) && !/^0h\s*0+m$/.test(duration)) {
+  return duration;
+}
+  
     let totalHours = 0;
     let totalMinutes = 0;
 
@@ -804,9 +809,19 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
 
   const formatTime = (dateTimeStr?: string): string => {
     if (!dateTimeStr) return '--:--';
+    
+    // If already HH:mm, return as-is
+    if (/^\d{2}:\d{2}$/.test(dateTimeStr)) return dateTimeStr;
+    
+    // If HH:mm:ss, truncate
+    if (/^\d{2}:\d{2}:\d{2}$/.test(dateTimeStr)) return dateTimeStr.slice(0, 5);
+    
     try {
       const date = new Date(dateTimeStr);
-      if (isNaN(date.getTime())) return '--:--';
+      if (isNaN(date.getTime())) {
+        console.warn('⚠️ Unparseable time:', dateTimeStr);
+        return '--:--';
+      }
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     } catch {
       return '--:--';
@@ -1098,6 +1113,10 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
             originalPriceAmount: priceAmount,
             originalPriceCurrency: priceCurrency,
             displayPrice: '',
+            duration: formatDuration(offer.duration),
+            returnFlight: offer.returnFlight
+              ? { ...offer.returnFlight, duration: formatDuration(offer.returnFlight.duration) }
+              : undefined,
           });
         }
       } else {
@@ -1196,7 +1215,7 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
             arrivalTime = lastSegment.arriving_at || lastSegment.arrival?.at || arrivalTime;
           }
 
-          const duration = firstSlice?.duration || '';
+          const duration = formatDuration(firstSlice?.duration || '');
 
           let priceAmount = 0;
           let priceCurrency = 'GBP';
@@ -1275,7 +1294,7 @@ const [propertyFacilityFilter, setPropertyFacilityFilter] = useState<string[]>([
               departureTime: offer.slices?.[1]?.segments?.[0]?.departing_at,
               arrivalTime: offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at,
               flightNumber: offer.slices?.[1]?.segments?.[0]?.marketing_carrier_flight_number,
-              duration: offer.slices?.[1]?.duration,
+              duration: formatDuration(offer.slices?.[1]?.duration || ''),
               stopCount: Math.max(0, (offer.slices?.[1]?.segments?.length || 1) - 1),
               timeOfDay: getTimeOfDay(offer.slices?.[1]?.segments?.[0]?.departing_at),
               arrivalTimeOfDay: getArrivalTimeOfDay(offer.slices?.[1]?.segments?.[offer.slices[1].segments.length - 1]?.arriving_at)
@@ -2450,6 +2469,21 @@ const hotelFilterOptions = useMemo(() => {
     const slices = flight.slices || [];
     const isMultiCity = slices.length > 2;
     const isRoundTrip = flight.isRoundTrip || slices.length === 2;
+    const computeDur = (dep?: string, arr?: string) => {
+      if (!dep || !arr) return '';
+      try {
+        const d = new Date(dep);
+        const a = new Date(arr);
+        const diffMin = Math.round((a.getTime() - d.getTime()) / 60000);
+        if (diffMin <= 0) return '';
+        const h = Math.floor(diffMin / 60);
+        const m = diffMin % 60;
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+      } catch { return ''; }
+    };
+    
+    const outboundDur = computeDur(flight.departureTime, flight.arrivalTime) || formatDuration(flight.duration) || '';
+    const returnDur = computeDur(flight.returnFlight?.departureTime, flight.returnFlight?.arrivalTime) || formatDuration(flight.returnFlight?.duration || '') || '';
   
 
     const allSegments: any[] = [];
@@ -2651,13 +2685,13 @@ const hotelFilterOptions = useMemo(() => {
                       <div className="flex-1 mx-4">
                         <div className="relative">
                           <div className="w-full h-[1px] bg-gray-300"></div>
-                          <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
+                          <div className="absolute left-1/2 -translate-x-1/2 -top-4">
                             <svg className="w-4 h-4 text-[#33a8da]" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                             </svg>
                           </div>
                         </div>
-                        <div className="text-center mt-2">
+                        <div className="text-center mt-4">
                           <p className="text-xs font-medium text-gray-600">{sliceDuration || '--'}</p>
                           <p className="text-[10px] text-gray-400">{stopText}</p>
                         </div>
@@ -2757,9 +2791,7 @@ const hotelFilterOptions = useMemo(() => {
                     <span className="text-xs font-bold text-gray-400 uppercase">
                       {isRoundTrip ? 'Depart' : 'Depart'}
                     </span>
-                    <span className="text-xs text-gray-400">
-                      {flight.duration} • {flight.stopText}
-                    </span>
+                    <p className="text-xs font-medium text-gray-600">{formatDuration(flight.duration)}</p>
                   </div>
   
                   <div className="flex items-center justify-between">
@@ -2773,12 +2805,12 @@ const hotelFilterOptions = useMemo(() => {
                     <div className="flex-1 mx-4">
                       <div className="relative">
                         <div className="w-full h-[1px] bg-gray-300"></div>
-                        <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-4">
                         <i className="fa-solid fa-plane text-[#33a8da]" aria-hidden />
                         </div>
                       </div>
-                      <div className="text-center mt-2">
-                        <p className="text-xs font-medium text-gray-600">{flight.duration}</p>
+                      <div className="text-center mt-4">
+                      <p className="text-xs font-medium text-gray-600">{formatDuration(flight.duration)}</p>
                         <p className="text-[10px] text-gray-400">{flight.stopText}</p>
                       </div>
                     </div>
@@ -2793,12 +2825,12 @@ const hotelFilterOptions = useMemo(() => {
                 </div>
   
                                 {/* Return */}
-                                {flight.returnFlight && flight.returnFlight.departureTime && (
+                                {flight.returnFlight && (
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-xs font-bold text-gray-400 uppercase">Return</span>
                       <span className="text-xs text-gray-400">
-                        {flight.returnFlight.duration} • 
+                      <p className="text-xs font-medium text-gray-600">{flight.returnFlight.duration}</p>
                         {flight.returnFlight.stopCount === 0 ? 'Non stop' :
                          flight.returnFlight.stopCount === 1 ? '1 Stop' : `${flight.returnFlight.stopCount} Stops`}
                       </span>
@@ -2815,13 +2847,13 @@ const hotelFilterOptions = useMemo(() => {
                       <div className="flex-1 mx-4">
                         <div className="relative">
                           <div className="w-full h-[1px] bg-gray-300"></div>
-                          <div className="absolute left-1/2 -translate-x-1/2 -top-2.5 bg-gray-50 px-2">
+                          <div className="absolute left-1/2 -translate-x-1/2 -top-4">
                             <svg className="w-4 h-4 text-[#33a8da] rotate-180" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" />
                             </svg>
                           </div>
                         </div>
-                        <div className="text-center mt-2">
+                        <div className="text-center mt-4">
                           <p className="text-xs font-medium text-gray-600">{flight.returnFlight.duration}</p>
                           <p className="text-[10px] text-gray-400">
                             {flight.returnFlight.stopCount === 0 ? 'Non stop' :

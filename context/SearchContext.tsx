@@ -1167,7 +1167,28 @@ const searchHotels = async (params: SearchParams) => {
       const outboundOriginCity = outboundSlice.origin?.city_name || outboundSlice.origin?.name || firstOutboundSegment.origin?.city_name || firstOutboundSegment.origin?.name || '';
       const outboundDestinationCity = outboundSlice.destination?.city_name || outboundSlice.destination?.name || lastOutboundSegment.destination?.city_name || lastOutboundSegment.destination?.name || '';
       
-      const outboundDuration = outboundSlice.duration || '';
+      const outboundDuration = (() => {
+      
+        const t = (outboundSlice as any).tripDuration || (outboundSlice as any).totalDuration;
+        if (t && typeof t === 'string') return t;
+      
+      
+        if (outboundDepartureTime && outboundArrivalTime) {
+          try {
+            const d = new Date(outboundDepartureTime);
+            const a = new Date(outboundArrivalTime);
+            const diffMin = Math.round((a.getTime() - d.getTime()) / 60000);
+            if (diffMin > 0) {
+              const h = Math.floor(diffMin / 60);
+              const m = diffMin % 60;
+              return m > 0 ? `${h}:${String(m).padStart(2, '0')}:00` : `${h}:00:00`;
+            }
+          } catch {}
+        }
+      
+      
+        return outboundSlice.duration || '';
+      })();
       const outboundStopCount = outboundSegments.length > 0 ? outboundSegments.length - 1 : 0;
       
       const airline = outboundSlice.airline || offer.airline || firstOutboundSegment.airline || firstOutboundSegment.operating_carrier || {};
@@ -1227,8 +1248,50 @@ const searchHotels = async (params: SearchParams) => {
         const returnFlightNumber = firstReturnSegment.flight_number || '';
         const returnAirline = returnSlice.airline || {};
         const returnAirlineName = returnAirline.name || offer.marketing_carrier_name || airlineName;
-        
         let returnDurationDisplay = returnSlice.duration || '';
+  
+  // ✅ Compute from timestamps if available
+  const returnDepTime = returnSlice.departure_time || firstReturnSegment.departing_at || firstReturnSegment.start_time || '';
+  const returnArrTime = returnSlice.arrival_time || lastReturnSegment.arriving_at || lastReturnSegment.end_time || '';
+  if (returnDepTime && returnArrTime) {
+    try {
+      const d = new Date(returnDepTime);
+      const a = new Date(returnArrTime);
+      const diffMin = Math.round((a.getTime() - d.getTime()) / 60000);
+      if (diffMin > 0) {
+        const rh = Math.floor(diffMin / 60);
+        const rm = diffMin % 60;
+        returnDurationDisplay = rm > 0 ? `${rh}h ${rm}m` : `${rh}h`;
+      }
+    } catch {}
+  } else if (returnDurationDisplay && returnDurationDisplay.includes(':')) {
+
+    const parts = returnDurationDisplay.split(':');
+    if (parts.length >= 2) {
+      const hh = parseInt(parts[0]);
+      const mm = parseInt(parts[1]);
+      if (hh > 0 && mm > 0) returnDurationDisplay = `${hh}h ${mm}m`;
+      else if (hh > 0) returnDurationDisplay = `${hh}h`;
+      else if (mm > 0) returnDurationDisplay = `${mm}m`;
+    }
+  }
+  
+        
+        if (durationDisplay && typeof durationDisplay === 'string') {
+        
+          if (/^\d+h(\s\d+m)?$/.test(durationDisplay)) {
+   
+          } else if (durationDisplay.includes(':')) {
+            const parts = durationDisplay.split(':');
+            if (parts.length >= 2) {
+              const hours = parseInt(parts[0]);
+              const minutes = parseInt(parts[1]);
+              if (hours > 0 && minutes > 0) durationDisplay = `${hours}h ${minutes}m`;
+              else if (hours > 0) durationDisplay = `${hours}h`;
+              else if (minutes > 0) durationDisplay = `${minutes}m`;
+            }
+          }
+        }
         if (returnDurationDisplay && typeof returnDurationDisplay === 'string') {
           if (returnDurationDisplay.includes(':')) {
             const parts = returnDurationDisplay.split(':');
@@ -1247,8 +1310,8 @@ const searchHotels = async (params: SearchParams) => {
           arrivalAirport: returnSlice.destination?.iata_code || returnSlice.destination || '',
           departureCity: returnSlice.origin?.city_name || returnSlice.origin?.name || '',
           arrivalCity: returnSlice.destination?.city_name || returnSlice.destination?.name || '',
-          departureTime: returnSlice.departure_time || firstReturnSegment.departing_at || firstReturnSegment.start_time || '',
-          arrivalTime: returnSlice.arrival_time || lastReturnSegment.arriving_at || lastReturnSegment.end_time || '',
+          departureTime: returnSlice.departure_time || firstReturnSegment.departing_at || (firstReturnSegment as any).departure?.at || firstReturnSegment.start_time || '',
+arrivalTime: returnSlice.arrival_time || lastReturnSegment.arriving_at || (lastReturnSegment as any).arrival?.at || lastReturnSegment.end_time || '',
           flightNumber: returnFlightNumber,
           airlineName: returnAirlineName,
           duration: returnDurationDisplay,
@@ -1388,12 +1451,21 @@ const searchHotels = async (params: SearchParams) => {
                                      lastOutboundSegment.arrival?.iataCode || 
                                      outboundSlice.destination?.iata_code || '';
       
-      const outboundDepartureTime = firstOutboundSegment.departing_at || 
-                                    firstOutboundSegment.departure?.at || 
-                                    outboundSlice.departure_time || '';
-      const outboundArrivalTime = lastOutboundSegment.arriving_at || 
-                                  lastOutboundSegment.arrival?.at || 
-                                  outboundSlice.arrival_time || '';
+                                     const outboundDepartureTime = 
+  outboundSlice.departure_time || 
+  firstOutboundSegment.departing_at || 
+  (firstOutboundSegment as any).departure?.at ||  // ← add
+  firstOutboundSegment.start_time || 
+  (firstOutboundSegment as any).departure_time ||  // ← add
+  '';
+                                   
+                                     const outboundArrivalTime = 
+                                     outboundSlice.arrival_time || 
+                                     lastOutboundSegment.arriving_at || 
+                                     (lastOutboundSegment as any).arrival?.at ||   // ← add this
+                                     lastOutboundSegment.end_time || 
+                                     (lastOutboundSegment as any).arrival_time ||   // ← and this
+                                     '';
       
       let totalDurMin = 0;
       if (outboundSlice.duration) {
@@ -1401,6 +1473,14 @@ const searchHotels = async (params: SearchParams) => {
         const hours = match?.[1] ? parseInt(match[1]) : 0;
         const minutes = match?.[2] ? parseInt(match[2]) : 0;
         totalDurMin = hours * 60 + minutes;
+      }
+      if (totalDurMin < 30 && outboundDepartureTime && outboundArrivalTime) {
+        try {
+          const d = new Date(outboundDepartureTime);
+          const a = new Date(outboundArrivalTime);
+          const diff = Math.round((a.getTime() - d.getTime()) / 60000);
+          if (diff > 0) totalDurMin = diff;
+        } catch {}
       }
       const h = Math.floor(totalDurMin / 60);
       const m = totalDurMin % 60;

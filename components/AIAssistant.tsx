@@ -1167,14 +1167,31 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, user }) => {
               </div>
 
               {m.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-gray-200 border border-gray-300 flex-shrink-0 ml-3 overflow-hidden">
-                  <img
-                    src={user?.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=1a1a1a&color=fff`}
-                    alt="User"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
+  <div className="w-8 h-8 rounded-full bg-gray-200 border border-gray-300 flex-shrink-0 ml-3 flex items-center justify-center text-gray-500 overflow-hidden">
+    {user?.profilePicture ? (
+      <img
+        src={user.profilePicture}
+        alt="User"
+        className="w-full h-full object-cover"
+      />
+    ) : (
+      // Default Profile Icon (Outline User)
+      <svg 
+        className="w-5 h-5" 
+        fill="none" 
+        viewBox="0 0 24 24" 
+        stroke="currentColor"
+      >
+        <path 
+          strokeLinecap="round" 
+          strokeLinejoin="round" 
+          strokeWidth={2} 
+          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" 
+        />
+      </svg>
+    )}
+  </div>
+)}
             </div>
           ))}
 
