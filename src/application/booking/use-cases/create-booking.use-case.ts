@@ -289,8 +289,13 @@ export class CreateBookingUseCase {
         email: p.email || 'guest@example.com',
         phone_number: p.phone_number || p.phone || '+1234567890',
         title: p.title || 'mr',
-      }));
+     
+        passportNumber: p.passportNumber || p.PassportNumber,
+        passportIssuingCountry: p.passportIssuingCountry || p.PassportIssueCountryCode || p.issuing_country_code,
+        passportExpiry: p.passportExpiry || p.ExpiryDate || p.expires_on,
 
+        identity_documents: p.identity_documents || p.identityDocuments,
+      }));
       const offerTotalAmount = dto.offerData?.total_amount || 
                               dto.offerData?.totalAmount || 
                               (dto as any)._validatedTotalAmount || 

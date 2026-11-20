@@ -402,7 +402,7 @@ export class DuffelService {
       identity_documents?: Array<{
         type: string; 
         unique_identifier?: string;
-        issued_by?: string;
+        issuing_country_code: string;
         expires_on?: string;
       }>;
     }>;

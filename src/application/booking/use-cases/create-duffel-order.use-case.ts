@@ -348,6 +348,10 @@ export class CreateDuffelOrderUseCase {
             email: p.email || 'guest@example.com',
             phone_number: p.phone_number || p.phone || '+1234567890',
             title: p.title || 'mr',
+            passportNumber: p.passportNumber,
+            passportIssuingCountry: p.passportIssuingCountry,
+            passportExpiry: p.passportExpiry,
+            identity_documents: p.identity_documents || p.identityDocuments,
           }));
         }
       }
@@ -445,13 +449,25 @@ export class CreateDuffelOrderUseCase {
         };
 
         const identityDocs = passenger.identityDocuments || passenger.identity_documents || offerPassenger.identity_documents;
+        
         if (identityDocs && Array.isArray(identityDocs) && identityDocs.length > 0) {
+          // Nested array approach
           passengerObj.identity_documents = identityDocs.map((doc: any) => ({
-            type: doc.type,
-            unique_identifier: doc.uniqueIdentifier || doc.unique_identifier,
-            issuing_country_code: doc.issuingCountryCode || doc.issuing_country_code,
-            expires_on: doc.expiresOn || doc.expires_on,
+            type: doc.type || 'passport',
+            unique_identifier: doc.uniqueIdentifier || doc.unique_identifier || doc.passportNumber,
+            issuing_country_code: doc.issuingCountryCode || doc.issuing_country_code || doc.passportIssuingCountry,
+            expires_on: doc.expiresOn || doc.expires_on || doc.passportExpiry,
           }));
+        } else if (passenger.passportNumber) {
+          // ✅ Flat fields approach (If frontend sends passportNumber directly)
+          passengerObj.identity_documents = [
+            {
+              type: 'passport',
+              unique_identifier: passenger.passportNumber,
+              issuing_country_code: passenger.passportIssuingCountry || passenger.issuingCountryCode || 'NG',
+              expires_on: passenger.passportExpiry || passenger.expiresOn,
+            }
+          ];
         }
 
         return passengerObj;

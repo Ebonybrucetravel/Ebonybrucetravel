@@ -54,6 +54,10 @@ export class CreateGuestBookingUseCase {
           email: p.email || 'guest@example.com',
           phone_number: p.phone_number || p.phone || '+1234567890',
           title: p.title || 'mr',
+          passportNumber: p.passportNumber || p.PassportNumber,
+  passportIssuingCountry: p.passportIssuingCountry || p.issuingCountryCode,
+  passportExpiry: p.passportExpiry || p.expiresOn,
+  identity_documents: p.identity_documents || p.identityDocuments,
         }));
         
         cleanedBookingData = {
@@ -554,7 +558,10 @@ export class CreateGuestBookingUseCase {
   }
 
   private cleanSingleDuffelPassenger(passenger: any): any {
-    const allowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth'];
+    const allowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth',  'passportNumber',
+    'passportIssuingCountry',
+    'passportExpiry',
+    'identity_documents',];
     const cleaned: any = {};
     
     for (const field of allowedFields) {
