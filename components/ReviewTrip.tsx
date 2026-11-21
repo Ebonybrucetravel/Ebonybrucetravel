@@ -538,6 +538,9 @@ const [appliedPromo, setAppliedPromo] = useState<any | null>(null);
   const [passportExpiry, setPassportExpiry] = useState('');
   const [passportIssuingAuthority, setPassportIssuingAuthority] = useState('');
   const [passportIssueCountry, setPassportIssueCountry] = useState('');
+  const [duffelPassportNumber, setDuffelPassportNumber] = useState('');
+const [duffelPassportExpiry, setDuffelPassportExpiry] = useState('');
+const [duffelPassportIssuingCountry, setDuffelPassportIssuingCountry] = useState('NG');
   const [passportAddress, setPassportAddress] = useState('');
   const [passportCity, setPassportCity] = useState('');
   const [passportCountry, setPassportCountry] = useState('');
@@ -606,6 +609,7 @@ useEffect(() => {
 
   const isDuffel = (actualItem as any)?.provider?.toUpperCase() === 'DUFFEL' ||
                    (actualItem as any)?.type?.toLowerCase().includes('duffel');
+                 
 
   const [convertedPrices, setConvertedPrices] = useState({
     basePrice: 0,
@@ -629,13 +633,19 @@ useEffect(() => {
   const isDomesticByAirport = originCode && destinationCode && isDomesticFlight(originCode, destinationCode);
   const isDomesticByProduct = (actualItem as any)?.productType === 'FLIGHT_DOMESTIC';
   const isDomesticFlightResult = isDomesticByAirport || isDomesticByProduct;
+  const duffelRequiresPassport = 
+    isDuffel && 
+    isFlight && 
+    !isDomesticFlightResult;
+
+
 
   const isNorthAmerica = isFlight && isWakanow && isNorthAmericanDestination(extendedItem, searchParams);
   const showPassportSection = isFlight && isWakanow && isNorthAmerica;
   const passportRequired = showPassportSection;
   const requiresPassport = isNorthAmerica;
   const isPassportMandatory = isNorthAmerica;
-  const shouldSkipPassport = isDuffel || (isFlight && !isWakanow);
+  const shouldSkipPassport = isFlight && !isWakanow && !isDuffel;
   const isPassportIncompleteForDuffel = false; 
 
 
@@ -675,7 +685,7 @@ useEffect(() => {
         const isWakanowFlight = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                                 (actualItem as any)?.type?.toLowerCase().includes('wakanow');
         const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
-        const needsPassport = isWakanowFlight && !isDomesticFlight && isFlight;
+        const needsPassport = (isWakanowFlight && !isDomesticFlight) || duffelRequiresPassport;
         
         console.log('👶 Creating additional passengers with needsPassport:', {
           needsPassport,
@@ -1795,7 +1805,7 @@ if (!dateRegex.test(dateOfBirth)) {
     
    
 // ✅ ✅ ✅ PASSPORT VALIDATION FOR LEAD PASSENGER (ADULT)
-if (!shouldSkipPassport && isFlight && isInternational) {
+if (!shouldSkipPassport && isFlight && isInternational && !isDuffel) {
   console.log('🔍🔍🔍 DEBUG - Lead Passenger Passport State:', {
     passportNumber: passportNumber || '(empty)',
     passportExpiry: passportExpiry || '(empty)',
@@ -1816,7 +1826,8 @@ if (!shouldSkipPassport && isFlight && isInternational) {
   if (!passportNumber || !passportNumber.trim()) {
     missingFields.push('Passport Number');
   }
-  
+
+ 
   // ✅ Check BOTH state AND DOM
   const hasExpiry = passportExpiry && passportExpiry.trim();
   const hasDomExpiry = actualExpiryValue && actualExpiryValue.trim();
@@ -1884,6 +1895,37 @@ if (!shouldSkipPassport && isFlight && isInternational) {
       alert('Your passport must be valid for at least 6 months from your travel date for travel to North America.');
       return;
     }
+  }
+}
+// ✅ ✅ ✅ DUFFEL PASSPORT VALIDATION
+if (isDuffel && duffelRequiresPassport) {
+  const missing: string[] = [];
+  if (!duffelPassportNumber?.trim()) missing.push('Passport Number');
+  if (!duffelPassportExpiry?.trim()) missing.push('Passport Expiry');
+  if (
+    !duffelPassportIssuingCountry?.trim() ||
+    duffelPassportIssuingCountry.length !== 2
+  ) {
+    missing.push('Passport Issuing Country (2-letter code)');
+  }
+  if (missing.length > 0) {
+    alert(
+      `Please fill in the following Duffel passport fields:\n\n` +
+        missing.map(f => `• ${f}`).join('\n')
+    );
+    return;
+  }
+
+  const expiryDate = new Date(duffelPassportExpiry);
+  if (isNaN(expiryDate.getTime())) {
+    alert('Please enter a valid passport expiry date.');
+    return;
+  }
+  const todayCheck = new Date();
+  todayCheck.setHours(0, 0, 0, 0);
+  if (expiryDate < todayCheck) {
+    alert('Your passport has expired. Please renew your passport.');
+    return;
   }
 }
 
@@ -2048,7 +2090,7 @@ passengerInfo = {
                               (actualItem as any)?.type?.toLowerCase().includes('wakanow');
       
       const isDomesticFlight = isDomesticByAirport || isDomesticByProduct;
-      const needsPassport = isWakanowFlight && !isDomesticFlight;
+      const needsPassport = (isWakanowFlight && !isDomesticFlight) || duffelRequiresPassport;
       
       console.log('🔍 Passport condition check in handleCompleteBooking:', {
         isWakanowFlight,
@@ -2059,19 +2101,27 @@ passengerInfo = {
         passportIssuingAuthority,
       });
       
-      // ✅ ✅ ✅ FIX: Properly map passport fields for the API (Wakanow v2.3)
       if (needsPassport) {
-        // ✅ Standard fields (used by Wakanow API)
-        (passengerInfo as any).PassportNumber = passportNumber;
-        (passengerInfo as any).ExpiryDate = passportExpiry;
-        (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
-        (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
-        
-        // ✅ Backup fields (for compatibility)
-        (passengerInfo as any).passportNumber = passportNumber;
-        (passengerInfo as any).passportExpiry = passportExpiry;
-        (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
-        (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+        if (isDuffel) {
+          // Duffel uses the separate Duffel fields
+          (passengerInfo as any).PassportNumber = duffelPassportNumber;
+          (passengerInfo as any).ExpiryDate = duffelPassportExpiry;
+          (passengerInfo as any).PassportIssueCountryCode = duffelPassportIssuingCountry || 'NG';
+          (passengerInfo as any).passportNumber = duffelPassportNumber;
+          (passengerInfo as any).passportExpiry = duffelPassportExpiry;
+          (passengerInfo as any).passportIssueCountry = duffelPassportIssuingCountry || 'NG';
+        } else {
+          // Wakanow uses the Wakanow fields
+          (passengerInfo as any).PassportNumber = passportNumber;
+          (passengerInfo as any).ExpiryDate = passportExpiry;
+          (passengerInfo as any).PassportIssuingAuthority = passportIssuingAuthority;
+          (passengerInfo as any).PassportIssueCountryCode = passportIssueCountry || 'Nigeria';
+          (passengerInfo as any).passportNumber = passportNumber;
+          (passengerInfo as any).passportExpiry = passportExpiry;
+          (passengerInfo as any).passportIssuingAuthority = passportIssuingAuthority;
+          (passengerInfo as any).passportIssueCountry = passportIssueCountry || 'Nigeria';
+        }
+      
         
         console.log('📄 Adding passport fields to lead passenger:', {
           PassportNumber: (passengerInfo as any).PassportNumber,
@@ -2087,7 +2137,7 @@ if (additionalPassengers.length > 0) {
   const isWakanowFlightForTravellers = (actualItem as any)?.provider?.toUpperCase() === 'WAKANOW' ||
                                        (actualItem as any)?.type?.toLowerCase().includes('wakanow');
   const isDomesticFlightForTravellers = isDomesticByAirport || isDomesticByProduct;
-  const needsPassportForTraveller = isWakanowFlightForTravellers && !isDomesticFlightForTravellers;
+  const needsPassportForTraveller = (isWakanowFlightForTravellers && !isDomesticFlightForTravellers) || duffelRequiresPassport;
   
   const travellers = additionalPassengers.map((p, index) => {
     let passengerType = 'Adult';
@@ -2814,15 +2864,72 @@ const tripNights = (() => {
   </div>
 )}
   
-            {/* ✅ DUFFEL: Show message that passport not required */}
-            {isDuffel && isFlight && !extBooking && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
-                <h3 className="text-md font-semibold text-gray-900 mb-2">Passport Details</h3>
-                <p className="text-sm text-gray-500">
-                  Passport details are not required for this bookings. You can proceed without providing passport information.
-                </p>
-              </div>
-            )}
+          {/* ✅ DUFFEL PASSPORT - only for Duffel flights that require passport */}
+{isDuffel && isFlight && !extBooking && duffelRequiresPassport && (
+  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-3">
+      Passport Details <span className="text-red-500">*</span>
+    </h3>
+    <p className="text-sm text-gray-500 mb-4">
+      Passport details are required for this international flight.
+    </p>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Number <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={duffelPassportNumber}
+          onChange={(e) => setDuffelPassportNumber(e.target.value.toUpperCase())}
+          className={inputCls}
+          placeholder="A12345678"
+          required
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Expiry <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="date"
+          value={duffelPassportExpiry}
+          onChange={(e) => setDuffelPassportExpiry(e.target.value)}
+          className={inputCls}
+          required
+          min={new Date().toISOString().split('T')[0]}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Passport Issuing Country (ISO 2-letter code) <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={duffelPassportIssuingCountry}
+          onChange={(e) => setDuffelPassportIssuingCountry(e.target.value.toUpperCase().slice(0, 2))}
+          className={inputCls}
+          placeholder="NG"
+          maxLength={2}
+          required
+        />
+        <p className="text-[10px] text-gray-400 mt-1">
+          Enter the 2-letter country code (e.g., NG for Nigeria, GB for UK, US for USA)
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ DUFFEL: "not required" message when offer doesn't require passport */}
+{isDuffel && isFlight && !extBooking && !duffelRequiresPassport && (
+  <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
+    <h3 className="text-md font-semibold text-gray-900 mb-2">Passport Details</h3>
+    <p className="text-sm text-gray-500">
+      Passport details are not required for this flight. You can proceed without providing passport information.
+    </p>
+  </div>
+)}
   
             {/* ========== ADDITIONAL PASSENGERS ========== */}
             {additionalPassengers.length > 0 && (
@@ -2834,7 +2941,10 @@ const tripNights = (() => {
                 {additionalPassengers.map((p, index) => {
   const passengerType = p.type || 'adult';
   const label = `${passengerType.toUpperCase()} #${index + 1}`;
-  const showPassport = isFlight && isWakanow && !isDomesticFlightResult && !shouldSkipPassport;
+  const showPassport = isFlight && (
+    (isWakanow && !isDomesticFlightResult) ||
+    (isDuffel && duffelRequiresPassport)
+  );
   
   return (
     <div key={index} className="border border-gray-200 rounded-xl p-4 mb-4 last:mb-0">

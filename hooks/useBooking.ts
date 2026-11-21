@@ -1154,8 +1154,32 @@ if (passenger.countryCode) passengerInfo.countryCode = passenger.countryCode;
 if (passenger.city) passengerInfo.city = passenger.city;
 if (passenger.postalCode) passengerInfo.postalCode = passenger.postalCode;
 
-// ✅ DO NOT add PassportNumber, ExpiryDate, etc. to passengerInfo
-// They should ONLY be in the passengers array
+if (provider === 'DUFFEL') {
+  passengerInfo.passportNumber = 
+    (passenger as any).passportNumber || 
+    (passenger as any).PassportNumber || 
+    '';
+  passengerInfo.passportIssuingCountry = 
+    (passenger as any).passportIssuingCountry || 
+    (passenger as any).passportIssueCountry ||
+    (passenger as any).PassportIssueCountryCode || 
+    '';
+  passengerInfo.passportExpiry = 
+    (passenger as any).passportExpiry || 
+    (passenger as any).expiryDate || 
+    (passenger as any).ExpiryDate || 
+    '';
+  passengerInfo.identity_documents = 
+    (passenger as any).identity_documents || 
+    (passenger as any).identityDocuments || 
+    undefined;
+  
+  console.log('🛂 Duffel passport fields added to passengerInfo:', {
+    hasPassportNumber: !!passengerInfo.passportNumber,
+    hasPassportIssuingCountry: !!passengerInfo.passportIssuingCountry,
+    hasPassportExpiry: !!passengerInfo.passportExpiry,
+  });
+}
 
 body.passengerInfo = passengerInfo;
 
@@ -1495,6 +1519,22 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
             
             let currency = item.currency || offerCurrency;
 
+            const duffelPassengers = travellers.map((t: any, index: number) => {
+              const isLead = index === 0;
+              return {
+                given_name: t.FirstName || t.firstName || (isLead ? passenger.firstName : ''),
+                family_name: t.LastName || t.lastName || (isLead ? passenger.lastName : ''),
+                born_on: t.DateOfBirth || t.dateOfBirth || (isLead ? passenger.dateOfBirth : ''),
+                gender: (t.Gender || t.gender || (isLead ? passenger.gender : '')).toLowerCase().charAt(0) || 'm',
+                email: t.Email || t.email || (isLead ? passenger.email : ''),
+                phone_number: t.PhoneNumber || t.phone || (isLead ? passenger.phone : ''),
+                title: (t.Title || t.title || 'mr').toLowerCase(),
+                passportNumber: t.PassportNumber || t.passportNumber || (isLead ? (passenger as any).passportNumber : ''),
+                passportIssuingCountry: t.PassportIssueCountryCode || t.passportIssuingCountry || (isLead ? (passenger as any).passportIssuingCountry : ''),
+                passportExpiry: t.ExpiryDate || t.passportExpiry || (isLead ? (passenger as any).passportExpiry : ''),
+              };
+            });
+
           
             const offerData = {
               id: offerId,
@@ -1517,12 +1557,14 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
               departureDate: searchParams?.segments?.[0]?.date ?? new Date().toISOString().split('T')[0],
               isMultiCity: isMultiCity,
               allSegments: allSegments,
+              passengers: duffelPassengers,
+              offerPassengers: item.passengers || item.slices?.[0]?.passengers || [],
               ...(item.realData?.airline && { airline: item.realData.airline }),
               ...(item.realData?.flightNumber && {
                 flightNumber: item.realData.flightNumber,
               }),
               cabinClass: searchParams?.cabinClass ?? "economy",
-              passengers: searchParams?.passengers ?? 1,
+              passengersCount: searchParams?.passengers ?? 1, 
               basePrice: basePrice,
               markup_amount: markupAmount,
               service_fee: serviceFee,
@@ -1738,7 +1780,10 @@ if (productType === "FLIGHT_INTERNATIONAL" || productType === "FLIGHT_DOMESTIC")
         let cleanedPassengerInfo = body.passengerInfo;
         
         if (provider === 'DUFFEL') {
-          const duffelAllowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth'];
+          const duffelAllowedFields = ['firstName', 'lastName', 'email', 'phone', 'title', 'gender', 'dateOfBirth', 'passportNumber',
+          'passportIssuingCountry',
+          'passportExpiry',
+          'identity_documents',];
           const cleaned: any = {};
           for (const field of duffelAllowedFields) {
             if (body.passengerInfo[field] !== undefined && body.passengerInfo[field] !== null && body.passengerInfo[field] !== '') {
